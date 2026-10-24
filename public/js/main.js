@@ -13,8 +13,8 @@ import { IS_TOUCH, TouchControls, goFullscreen } from './touch.js';
 const MAP = buildMap();
 // Cihaza göre metinler (telefonda tuş yerine buton adları)
 const TXT = IS_TOUCH
-  ? { buy: 'Satın almak için $ butonu', plant: 'Bombayı kurmak için KUR butonunu basılı tut', defuse: 'İmha etmek için İMHA butonunu basılı tut', bombNote: 'C4 sende! A veya B bölgesine git, KUR butonunu basılı tut.', next: 'ATEŞ: sonraki oyuncu' }
-  : { buy: 'Satın almak için B', plant: 'Bombayı kurmak için E tuşunu basılı tut', defuse: 'İmha etmek için E tuşunu basılı tut', bombNote: 'C4 sende! 5 tuşu ile seç, A veya B bölgesinde E tuşunu basılı tut.', next: 'sonraki oyuncu için tıkla' };
+  ? { buyDM: 'Silahlar bedava: $ butonu ile istediğin zaman al', buy: 'Satın almak için $ butonu', plant: 'Bombayı kurmak için KUR butonunu basılı tut', defuse: 'İmha etmek için İMHA butonunu basılı tut', bombNote: 'C4 sende! A veya B bölgesine git, KUR butonunu basılı tut.', next: 'ATEŞ: sonraki oyuncu' }
+  : { buyDM: 'Silahlar bedava: B ile istediğin zaman al', buy: 'Satın almak için B', plant: 'Bombayı kurmak için E tuşunu basılı tut', defuse: 'İmha etmek için E tuşunu basılı tut', bombNote: 'C4 sende! 5 tuşu ile seç, A veya B bölgesinde E tuşunu basılı tut.', next: 'sonraki oyuncu için tıkla' };
 const NADE_ORDER = ['he', 'flash', 'smoke'];
 const BASE_FOV = 74;
 
@@ -69,6 +69,7 @@ scene.add(bombModel);
 // ---------------------------------------------------------------- Durum
 const S = {
   myId: 0, joined: false, team: 'SPEC', alive: false, hp: 100, armor: 0, helmet: false, kit: false, money: 0,
+  mode: 'classic', rooms: null,
   inv: { primary: null, secondary: null, nades: { he: 0, flash: 0, smoke: 0 } },
   phase: 'warmup', phaseEnd: 0, buyEnd: 0, round: 0, score: { T: 0, CT: 0 }, msg: '',
   bomb: null, bombExplodeAt: 0, roster: new Map(), sid: 0, rtt: 0,
@@ -98,8 +99,11 @@ const controlsOn = () => (IS_TOUCH ? S.joined && !pauseOpen && !menuOpen : locke
 function loadSettings() {
   let s = {};
   try { s = JSON.parse(localStorage.getItem('dust-settings') || '{}'); } catch { /* yok say */ }
-  return { sens: s.sens ?? 1.6, vol: s.vol ?? 0.6, name: s.name ?? '' };
+  return { sens: s.sens ?? 1.6, vol: s.vol ?? 0.6, name: s.name ?? '', mode: s.mode ?? 'classic' };
 }
+const isDM = () => S.mode !== 'classic';
+// Herkes Tek modunda takım sadece görünüştür: herkes düşmandır
+const isEnemy = (r) => S.mode === 'ffa' || r.team !== S.team;
 function saveSettings() {
   try { localStorage.setItem('dust-settings', JSON.stringify(view.settings)); } catch { /* yok say */ }
 }
@@ -132,15 +136,37 @@ function onMessage(m) {
   const now = performance.now();
   switch (m.t) {
     case 'welcome': S.myId = m.id; break;
+    case 'rooms': S.rooms = m.rooms; hud.menuRooms(m.rooms, view.settings.mode); break;
+    case 'room':
+      // Başka bir moda geçildi: eski odanın oyuncularını ve efektlerini temizle
+      S.mode = m.mode;
+      for (const id of [...remotes.keys()]) removeRemote(id);
+      S.roster.clear();
+      fx.clearRound();
+      syncItems([]);
+      onBomb(null, now);
+      S.phase = 'warmup'; S.round = 0; S.msg = '';
+      break;
+    case 'joinfail':
+      S.joined = false;
+      hud.setVisible(false);
+      if (touch) touch.setVisible(false);
+      menuOpen = false;
+      hud.showMenu(true);
+      hud.menuStatus(m.text);
+      if (document.pointerLockElement) document.exitPointerLock();
+      break;
     case 'state': {
       const prevPhase = S.phase, prevRound = S.round;
+      S.mode = m.mode || 'classic';
       S.phase = m.phase; S.round = m.round; S.score = m.score;
       S.phaseEnd = m.left ? now + m.left : 0;
       S.buyEnd = now + m.buyLeft;
-      hud.setScore(m.score.T, m.score.CT);
       if (m.phase === 'freeze' && m.round !== prevRound) { fx.clearRound(); hud.center(m.msg, TXT.buy, 3000); }
-      else if (m.msg && m.msg !== S.msg && (m.phase === 'warmup' || m.phase === 'gameover')) hud.center(m.msg, '', 4500);
+      else if (isDM() && m.phase === 'live' && prevPhase !== 'live' && S.joined) { fx.clearRound(); sfx.roundStart(); hud.center(m.msg, TXT.buyDM, 4000); }
+      else if (m.msg && m.msg !== S.msg && (m.phase === 'warmup' || (m.phase === 'gameover' && !isDM()))) hud.center(m.msg, '', 4500);
       if (prevPhase === 'freeze' && m.phase === 'live' && S.joined) { sfx.roundStart(); hud.center('Hadi, hadi, hadi!', '', 1500); }
+      if (prevPhase === 'gameover' && m.phase !== 'gameover' && !input.keys.Tab && !scoreShown) hud.scoreboard(false);
       S.msg = m.msg;
       break;
     }
@@ -152,8 +178,9 @@ function onMessage(m) {
     case 'hurt': onHurt(m); break;
     case 'kill': onKill(m); break;
     case 'rend':
-      hud.center(m.msg, m.sub, 5000);
-      if (S.joined) sfx.roundEnd(m.winner === S.team);
+      hud.center(m.msg, m.sub, m.final ? 9000 : 5000);
+      if (S.joined) sfx.roundEnd(S.mode === 'ffa' ? m.winner === S.myId : m.winner === S.team);
+      if (m.final) showScoreboard(); // ölüm maçı bitince sonuç tablosu
       break;
     case 'bomb': onBomb(m.b, now); break;
     case 'items': syncItems(m.items); break;
@@ -206,18 +233,15 @@ function removeRemote(id) {
 
 function applyRoster(ps) {
   const seen = new Set();
-  let t = 0, ct = 0;
   for (const e of ps) {
     seen.add(e.id);
     S.roster.set(e.id, e);
-    if (e.team === 'T') t++; else if (e.team === 'CT') ct++;
     if (e.id === S.myId) continue;
     const r = getRemote(e.id);
     if (r.name !== e.name || r.team !== e.team) { r.name = e.name; ensureModel(r, e.team, true); }
   }
   for (const id of [...S.roster.keys()]) if (!seen.has(id)) { S.roster.delete(id); removeRemote(id); }
-  hud.menuCounts(t, ct);
-  if (input.keys.Tab || scoreShown) showScoreboard();
+  if (input.keys.Tab || scoreShown || S.phase === 'gameover') showScoreboard();
 }
 
 function applySnap(ps, now) {
@@ -294,7 +318,7 @@ function updateRemotes(dt, now) {
       g.rotation.x = f * f * Math.PI * 0.49;
       g.position.y = r.y + f * 0.13;
     }
-    r.nameSprite.visible = r.alive && r.team === S.team;
+    r.nameSprite.visible = r.alive && !isEnemy(r);
   }
 }
 
@@ -335,6 +359,7 @@ function onSpawn(m) {
   W.cur = null;
   switchWeapon(bestWeapon(), true);
   hud.spec('');
+  if (m.prot) hud.note('Doğuş koruması: 2 saniye (ateş edince biter)', 2000);
 }
 
 function onHurt(m) {
@@ -350,7 +375,8 @@ function onKill(m) {
   const kName = kInfo?.name ?? '?';
   const wName = m.w === 'bomb' ? 'C4' : (WEAPONS[m.w]?.name ?? m.w);
   const suicide = !m.k || m.k === m.v;
-  hud.killfeed({ k: suicide ? '' : kName, kTeam: kInfo?.team, v: vInfo?.name ?? '?', vTeam: vInfo?.team, w: wName, hs: m.hs, mine: m.k === S.myId || m.v === S.myId });
+  const ffa = S.mode === 'ffa';
+  hud.killfeed({ k: suicide ? '' : kName, kTeam: ffa ? null : kInfo?.team, v: vInfo?.name ?? '?', vTeam: ffa ? null : vInfo?.team, w: wName, hs: m.hs, mine: m.k === S.myId || m.v === S.myId });
   if (vInfo) vInfo.alive = false;
   if (m.v === S.myId) {
     S.alive = false;
@@ -548,7 +574,7 @@ function trace(o, d, range) {
   const wall = raycastWorld(MAP.boxes, [o.x, o.y, o.z], [d.x, d.y, d.z], range);
   let hit = null;
   for (const r of remotes.values()) {
-    if (!r.alive || r.team === S.team) continue;
+    if (!r.alive || !isEnemy(r)) continue;
     for (const hb of r.hitboxes) {
       const h = rayAABB(o.x, o.y, o.z, d.x, d.y, d.z, hb.min, hb.max);
       if (h && h.t < wall.t && (!hit || h.t < hit.t)) hit = { t: h.t, id: r.id, zone: hb.zone };
@@ -828,7 +854,7 @@ function updateLocal(dt, now) {
 // ---------------------------------------------------------------- Kamera ve izleyici
 function pickSpec(dir = 1) {
   const list = [...remotes.values()].filter((r) => r.alive && r.model && r.snaps.length);
-  const mates = list.filter((r) => r.team === S.team);
+  const mates = list.filter((r) => !isEnemy(r));
   const pool = (mates.length ? mates : list).sort((a, b) => a.id - b.id);
   if (!pool.length) return null;
   const i = pool.findIndex((r) => r.id === view.specId);
@@ -887,12 +913,15 @@ function updateCamera(dt, now) {
 // ---------------------------------------------------------------- Arayüz
 function canBuyHere(now) {
   if (!S.alive) return false;
-  if (S.phase === 'warmup') return true;
+  if (isDM() || S.phase === 'warmup') return true;
   if (S.phase !== 'freeze' && S.phase !== 'live') return false;
   return now < S.buyEnd && inBuyZone(S.team, P.pos.x, P.pos.z);
 }
 function buyCtx() {
-  return { team: S.team, money: S.money, inv: S.inv, armor: S.armor, helmet: S.helmet, kit: S.kit, onBuy: (item) => send({ t: 'buy', item }) };
+  return {
+    team: S.team, money: S.money, inv: S.inv, armor: S.armor, helmet: S.helmet, kit: S.kit,
+    dm: isDM(), ffa: S.mode === 'ffa', onBuy: (item) => send({ t: 'buy', item }),
+  };
 }
 function openBuy() {
   if (!S.alive) return;
@@ -910,7 +939,7 @@ function closeBuy() {
   requestLock();
 }
 function showScoreboard() {
-  hud.scoreboard(true, { roster: [...S.roster.values()], myId: S.myId, score: S.score, round: S.round, bombCarrier: S.bomb?.carrier, myTeam: S.team });
+  hud.scoreboard(true, { roster: [...S.roster.values()], myId: S.myId, score: S.score, round: S.round, bombCarrier: S.bomb?.carrier, myTeam: S.team, mode: S.mode, phase: S.phase });
 }
 
 const fmt = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -922,11 +951,17 @@ function updateHUD(now, dt) {
   if (S.phase === 'warmup') { label = 'ISINMA'; txt = S.phaseEnd ? fmt(left) : '--:--'; }
   else if (S.phase === 'live' && S.bomb?.state === 'planted') { label = 'BOMBA'; txt = fmt(Math.max(0, S.bombExplodeAt - now)); danger = true; }
   else {
-    label = S.phase === 'freeze' ? 'HAZIRLIK' : S.phase === 'over' ? 'RAUND SONU' : S.phase === 'gameover' ? 'MAÇ SONU' : `RAUND ${S.round}`;
+    const liveLbl = S.mode === 'ffa' ? 'HERKES TEK' : S.mode === 'tdm' ? 'TAKIMLI ÖM' : `RAUND ${S.round}`;
+    label = S.phase === 'freeze' ? 'HAZIRLIK' : S.phase === 'over' ? 'RAUND SONU' : S.phase === 'gameover' ? 'MAÇ SONU' : liveLbl;
     txt = fmt(left);
-    danger = S.phase === 'live' && left < 10000;
+    danger = S.phase === 'live' && left < (isDM() ? 30000 : 10000);
   }
   hud.setTimer(txt, danger, label);
+  if (S.mode === 'ffa') {
+    let top = 0, mine = 0;
+    for (const p of S.roster.values()) { if (p.k > top) top = p.k; if (p.id === S.myId) mine = p.k; }
+    hud.setScore(mine, top, 'SEN', 'LİDER', true);
+  } else hud.setScore(S.score.T, S.score.CT, 'T', 'CT', false);
   hud.setHP(S.alive ? S.hp : 0);
   hud.setArmor(S.alive ? S.armor : 0);
   hud.setMoney(S.money);
@@ -947,7 +982,7 @@ function updateHUD(now, dt) {
   hud.flash(blindLevel(now));
 
   const mates = [];
-  for (const r of remotes.values()) if (r.alive && r.team === S.team && r.snaps.length) mates.push({ x: r.x, z: r.z });
+  for (const r of remotes.values()) if (r.alive && !isEnemy(r) && r.snaps.length) mates.push({ x: r.x, z: r.z });
   let bomb = null;
   const b = S.bomb;
   if (b && S.team === 'T') {
@@ -972,7 +1007,7 @@ function updateHUD(now, dt) {
         }
       }
       if (best) {
-        const mate = best.r.team === S.team;
+        const mate = !isEnemy(best.r);
         text = `${mate ? 'Takım' : 'Düşman'}: ${best.r.name}`;
         col = mate ? '#7dff7d' : '#ff5a4a';
       }
@@ -1108,9 +1143,10 @@ for (const btn of document.querySelectorAll('[data-team]')) {
     sfx.setVolume(view.settings.vol);
     if (!ws || ws.readyState !== 1) { hud.menuStatus('Sunucuya bağlı değil, bekle…'); return; }
     const team = btn.dataset.team;
+    const mode = view.settings.mode;
     view.settings.name = nameInput.value.trim().slice(0, 16);
     saveSettings();
-    if (!S.joined) send({ t: 'join', name: view.settings.name, team });
+    if (!S.joined || mode !== S.mode) send({ t: 'join', name: view.settings.name, mode, team });
     else send({ t: 'team', team });
     S.joined = true;
     menuOpen = false;
@@ -1121,10 +1157,21 @@ for (const btn of document.querySelectorAll('[data-team]')) {
     requestLock();
   });
 }
+for (const b of document.querySelectorAll('.mode')) {
+  b.addEventListener('click', () => {
+    view.settings.mode = b.dataset.mode;
+    saveSettings();
+    hud.menuRooms(S.rooms, view.settings.mode);
+  });
+}
+hud.menuRooms(null, view.settings.mode);
+
 function openTeamMenu() {
   menuOpen = true;
   setPause(false);
   if (touch) touch.releaseAll();
+  view.settings.mode = S.mode;
+  hud.menuRooms(S.rooms, S.mode);
   hud.showMenu(true);
   if (document.pointerLockElement) document.exitPointerLock();
 }

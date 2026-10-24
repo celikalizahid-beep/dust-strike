@@ -63,7 +63,11 @@ export class HUD {
     this.set('roundLbl', label);
     this.toggle('timer', 'danger', !!danger);
   }
-  setScore(t, ct) { this.set('scoreT', String(t)); this.set('scoreCT', String(ct)); }
+  setScore(t, ct, lt = 'T', lct = 'CT', ffa = false) {
+    this.set('scoreT', String(t)); this.set('scoreCT', String(ct));
+    this.set('scoreTLbl', lt); this.set('scoreCTLbl', lct);
+    this.toggle('topbar', 'ffa', ffa);
+  }
   icons({ buy, bomb, kit, helmet }) {
     const html = (buy ? '<span class="buy">$ SATIN AL</span>' : '') + (bomb ? '<span class="bomb">C4</span>' : '') + (kit ? '<span>KİT</span>' : '') + (helmet ? '<span>KASK</span>' : '');
     this.set('icons', html, 'innerHTML');
@@ -137,29 +141,37 @@ export class HUD {
   scoreboard(show, data) {
     $('scoreboard').classList.toggle('hidden', !show);
     if (!show || !data) return;
-    const { roster, myId, score, round, bombCarrier, myTeam } = data;
-    const section = (team, label) => {
-      const ps = roster.filter((p) => p.team === team).sort((a, b) => b.k - a.k || a.d - b.d);
-      const rows = ps.map((p) => {
+    const { roster, myId, score, round, bombCarrier, myTeam, mode, phase } = data;
+    const table = (ps, cls) => {
+      const rows = ps.sort((a, b) => b.k - a.k || a.d - b.d).map((p, i) => {
         const status = !p.alive ? 'ÖLÜ' : p.id === bombCarrier && myTeam === 'T' ? 'BOMBA' : '';
-        return `<tr class="${p.id === myId ? 'me' : ''} ${p.alive ? '' : 'dead'}"><td class="${teamCls(team)}">${esc(p.name)}</td><td>${status}</td><td>${p.k}</td><td>${p.d}</td><td>${p.ping}</td></tr>`;
+        const rank = mode === 'ffa' ? `${i + 1}. ` : '';
+        return `<tr class="${p.id === myId ? 'me' : ''} ${p.alive ? '' : 'dead'}"><td class="${cls(p)}">${rank}${esc(p.name)}</td><td>${status}</td><td>${p.k}</td><td>${p.d}</td><td>${p.ping}</td></tr>`;
       }).join('');
-      return `<div class="hdr ${teamCls(team)}"><span>${label}</span><span>${score[team]}</span></div>
-        <table><tr><th style="width:46%">Oyuncu</th><th>Durum</th><th>Leş</th><th>Ölüm</th><th>Ping</th></tr>${rows || '<tr><td colspan="5" style="color:#777">Oyuncu yok</td></tr>'}</table>`;
+      return `<table><tr><th style="width:46%">Oyuncu</th><th>Durum</th><th>Leş</th><th>Ölüm</th><th>Ping</th></tr>${rows || '<tr><td colspan="5" style="color:#777">Oyuncu yok</td></tr>'}</table>`;
     };
-    $('sbBody').innerHTML = `<h2>DUST STRIKE · de_kum ${round ? '· Raund ' + round : '· Isınma'}</h2>` +
-      section('T', 'Teröristler') + section('CT', 'Anti-Terör Timi');
+    const section = (team, label) => `<div class="hdr ${teamCls(team)}"><span>${label}</span><span>${score[team]}</span></div>` +
+      table(roster.filter((p) => p.team === team), () => teamCls(team));
+    const modeName = { classic: 'Klasik', tdm: 'Takımlı Ölüm Maçı', ffa: 'Herkes Tek' }[mode] || '';
+    const sub = mode === 'classic' ? (round ? 'Raund ' + round : 'Isınma') : phase === 'warmup' ? 'Isınma' : phase === 'gameover' ? 'Maç bitti' : 'En çok leş kazanır';
+    $('sbBody').innerHTML = `<h2>DUST STRIKE · ${modeName} · ${sub}</h2>` +
+      (mode === 'ffa' ? table(roster, () => '') : section('T', 'Teröristler') + section('CT', 'Anti-Terör Timi'));
   }
 
   // ---------------- Satın alma menüsü
   buyPrice(item, ctx) {
+    if (ctx.dm) return 0;
     if (item === 'vesthelm' && ctx.armor >= 100 && !ctx.helmet) return 350;
     return (WEAPONS[item] || ITEMS[item]).price;
   }
   buyColumns(ctx) {
     return BUY_MENU.map((cat) => ({
       name: cat.name,
-      items: cat.items.filter((it) => { const d = WEAPONS[it] || ITEMS[it]; return !d.team || d.team === ctx.team; }),
+      items: cat.items.filter((it) => {
+        const d = WEAPONS[it] || ITEMS[it];
+        if (it === 'kit') return ctx.team === 'CT' && !ctx.ffa;
+        return !d.team || d.team === ctx.team || ctx.ffa;
+      }),
     }));
   }
   openBuy(ctx) {
@@ -179,7 +191,7 @@ export class HUD {
       c.items.map((it, ii) => {
         const d = WEAPONS[it] || ITEMS[it];
         const price = this.buyPrice(it, ctx);
-        return `<button class="bitem ${owned.has(it) ? 'owned' : ''}" data-item="${it}" ${price > ctx.money ? 'disabled' : ''}><span><span class="k">${ii + 1}</span>${d.name}</span><span class="p">$${price}</span></button>`;
+        return `<button class="bitem ${owned.has(it) ? 'owned' : ''}" data-item="${it}" ${price > ctx.money ? 'disabled' : ''}><span><span class="k">${ii + 1}</span>${d.name}</span><span class="p">${price ? '$' + price : 'BEDAVA'}</span></button>`;
       }).join('') + '</div>').join('');
     $('buyMoney').textContent = '$' + ctx.money;
     for (const b of $('buyCols').querySelectorAll('.bitem')) b.onclick = () => ctx.onBuy(b.dataset.item);
@@ -249,6 +261,17 @@ export class HUD {
   // ---------------- Menü
   showMenu(v) { $('menu').classList.toggle('hidden', !v); }
   menuStatus(t) { $('menuStatus').textContent = t; }
-  menuCounts(t, ct) { $('cntT').textContent = t + ' oyuncu'; $('cntCT').textContent = ct + ' oyuncu'; }
+  menuRooms(rooms, sel) {
+    for (const k of ['classic', 'tdm', 'ffa']) {
+      const r = rooms && rooms[k];
+      $('cnt-' + k).textContent = r ? `${r.total}/${r.max} oyuncu` : '';
+      document.querySelector(`.mode[data-mode="${k}"]`).classList.toggle('sel', k === sel);
+    }
+    const r = rooms && rooms[sel];
+    $('cntT').textContent = (r ? r.T : 0) + ' oyuncu';
+    $('cntCT').textContent = (r ? r.CT : 0) + ' oyuncu';
+    $('teamPick').classList.toggle('hidden', sel === 'ffa');
+    $('ffaPick').classList.toggle('hidden', sel !== 'ffa');
+  }
   showPause(v) { $('pause').classList.toggle('hidden', !v); }
 }

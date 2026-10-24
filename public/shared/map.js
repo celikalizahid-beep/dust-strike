@@ -92,8 +92,12 @@ export function buildMap() {
     }
   }
 
+  // Ölüm maçı modları için haritanın her yerindeki boş hücreler doğuş noktası olabilir
+  const dmSpawns = [];
+  for (let r = 0; r < MAP_H; r++) for (let c = 0; c < MAP_W; c++) if (grid[r][c] === '.') dmSpawns.push([cx(c), 0, cz(r)]);
+
   return {
-    grid, boxes,
+    grid, boxes, dmSpawns,
     spawns: {
       T: spawnList(grid, [16, 18, 20, 22, 24, 26, 28, 30], [34, 36, 38]),
       CT: spawnList(grid, [17, 19, 21, 23, 25, 27, 29], [2, 4, 6]),

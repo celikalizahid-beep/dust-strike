@@ -37,7 +37,21 @@ Notlar: Ücretsiz planda 15 dakika kimse oynamazsa sunucu uyur; ilk giren kişi 
 
 (Alternatif: modeminden 3000 portunu bilgisayarına yönlendirip dış IP'ni paylaşmak.)
 
-## Oyun kuralları
+## Oyun modları
+
+Menüden mod seçilir; üç mod aynı anda oynanabilir (her biri ayrı oda).
+
+| Mod | Kurallar |
+| --- | --- |
+| **Klasik** | Raundlu bomba modu (aşağıdaki kurallar). En fazla 20 kişi. |
+| **Takımlı Ölüm Maçı** | T vs CT, ölünce 2,5 sn sonra yeniden doğarsın. 10 dakika sonunda en çok leşi alan takım kazanır. En fazla 20 kişi. |
+| **Herkes Tek** | Herkes herkese karşı, takım yok. 10 dakika sonunda en çok leşi alan oyuncu kazanır. En fazla 32 kişi. |
+
+Ölüm maçı modlarında: silahlar bedava ve her yerde alınabilir (B / $), son aldığın ana silah ile zırh
+yeniden doğunca otomatik verilir, doğunca 2 saniye koruma vardır (ateş edince biter). Maç süresi
+`DM_TIME` ortam değişkeniyle (saniye) değiştirilebilir.
+
+## Klasik mod kuralları
 
 - İki takım: **Teröristler (T)** ve **Anti-Terör (CT)**. Her iki takımda en az 1 kişi olunca maç başlar;
   o zamana kadar ısınma modu (sınırsız para, ölünce yeniden doğma).
