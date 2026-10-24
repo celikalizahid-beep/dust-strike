@@ -1,0 +1,10 @@
+# Render.com kurulum dosyası: "New > Blueprint" ile bu depo seçilince sunucu otomatik kurulur.
+services:
+  - type: web
+    name: dust-strike
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    autoDeploy: true

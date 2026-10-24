@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DUST STRIKE</title>
+<style>
+  :root {
+    --hud: rgba(255, 178, 40, 0.92);
+    --hud-dim: rgba(255, 178, 40, 0.55);
+    --t: #e0a050;
+    --ct: #7fb2ff;
+    --panel: rgba(18, 16, 12, 0.88);
+    --line: rgba(255, 190, 90, 0.25);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: #eee; font-family: Verdana, Tahoma, "Segoe UI", sans-serif; user-select: none; }
+  #game canvas { display: block; }
+  .hidden { display: none !important; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; text-shadow: 0 0 4px rgba(0,0,0,.8); }
+  #radar { position: absolute; left: 14px; top: 14px; width: 190px; height: 190px; }
+  #topbar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 6px; font-weight: bold; }
+  #topbar .sc { min-width: 64px; padding: 4px 10px; background: rgba(0,0,0,.45); border-radius: 4px; text-align: center; font-size: 22px; }
+  #topbar .sc small { display: block; font-size: 10px; letter-spacing: 1px; opacity: .8; }
+  #topbar .t { color: var(--t); } #topbar .ct { color: var(--ct); }
+  #timer { min-width: 96px; padding: 4px 12px; background: rgba(0,0,0,.45); border-radius: 4px; text-align: center; font-size: 26px; color: var(--hud); }
+  #timer.danger { color: #ff4a3a; }
+  #timer small { display: block; font-size: 10px; color: #ddd; letter-spacing: 1px; }
+  #killfeed { position: absolute; right: 14px; top: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .kf { background: rgba(0,0,0,.55); padding: 4px 10px; border-radius: 3px; font-size: 13px; white-space: nowrap; }
+  .kf.mine { outline: 1px solid rgba(255,80,60,.85); }
+  .kf .w { color: #ddd; margin: 0 8px; font-size: 12px; }
+  .kf .hs { color: #ff5a4a; font-weight: bold; margin-left: -4px; margin-right: 8px; font-size: 11px; }
+  .tcol { color: var(--t); } .ctcol { color: var(--ct); }
+  #chat { position: absolute; left: 14px; bottom: 120px; width: 460px; max-width: 60vw; font-size: 13px; }
+  #chatlog div { margin-top: 2px; text-shadow: 0 0 3px #000, 0 0 3px #000; transition: opacity .6s; }
+  #chatlog .sys { color: #b6e27c; }
+  #chatinput { pointer-events: auto; width: 100%; margin-top: 6px; padding: 6px 8px; background: rgba(0,0,0,.7); border: 1px solid var(--line); color: #fff; font: inherit; outline: none; border-radius: 3px; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --gap: 5px; }
+  #crosshair i { position: absolute; background: #3cff52; box-shadow: 0 0 1px #000; }
+  #crosshair .l, #crosshair .r { width: 8px; height: 2px; top: -1px; }
+  #crosshair .t, #crosshair .b { width: 2px; height: 8px; left: -1px; }
+  #crosshair .l { right: var(--gap); } #crosshair .r { left: var(--gap); }
+  #crosshair .t { bottom: var(--gap); } #crosshair .b { top: var(--gap); }
+  #center { position: absolute; top: 24%; left: 0; right: 0; text-align: center; }
+  #centerMain { font-size: 34px; font-weight: bold; color: #fff; letter-spacing: 1px; }
+  #centerSub { font-size: 16px; color: #ddd; margin-top: 6px; }
+  #hint { position: absolute; top: 62%; left: 0; right: 0; text-align: center; font-size: 15px; color: #fff; }
+  #note { position: absolute; bottom: 160px; left: 0; right: 0; text-align: center; font-size: 15px; color: #ffd27a; }
+  #enemyName { position: absolute; top: calc(50% + 30px); left: 0; right: 0; text-align: center; font-size: 14px; font-weight: bold; }
+  #spec { position: absolute; bottom: 90px; left: 0; right: 0; text-align: center; font-size: 15px; color: #fff; }
+  #spec span { background: rgba(0,0,0,.55); padding: 6px 14px; border-radius: 3px; }
+  #progress { position: absolute; top: 56%; left: 50%; transform: translateX(-50%); width: 320px; text-align: center; }
+  #progressLabel { font-size: 13px; margin-bottom: 4px; }
+  #progress .bar { height: 10px; background: rgba(0,0,0,.6); border: 1px solid var(--hud-dim); }
+  #progressFill { height: 100%; width: 0; background: var(--hud); }
+  #bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 80px; color: var(--hud); font-weight: bold; }
+  #bottom .blk { position: absolute; bottom: 16px; display: flex; align-items: baseline; gap: 8px; font-size: 38px; }
+  #bottom svg { width: 30px; height: 30px; fill: var(--hud); align-self: center; }
+  #hpBlk { left: 22px; } #arBlk { left: 190px; }
+  #hpBlk.low { color: #ff3b2f; } #hpBlk.low svg { fill: #ff3b2f; }
+  #icons { position: absolute; left: 360px; bottom: 22px; display: flex; gap: 10px; font-size: 13px; }
+  #icons span { padding: 3px 7px; border: 2px solid var(--hud); border-radius: 4px; }
+  #icons .buy { color: #6dff6d; border-color: #6dff6d; }
+  #icons .bomb { color: #ff6a4a; border-color: #ff6a4a; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  #moneyBlk { right: 26px; bottom: 74px !important; font-size: 30px !important; }
+  #moneyDelta { position: absolute; right: 26px; bottom: 116px; font-size: 20px; font-weight: bold; transition: opacity .8s, transform .8s; }
+  #ammoBlk { right: 26px; }
+  #ammoBlk .sep { color: var(--hud-dim); font-size: 30px; margin: 0 6px; }
+  #ammoBlk .res { font-size: 26px; }
+  #wname { position: absolute; right: 28px; bottom: 6px; font-size: 12px; color: var(--hud-dim); letter-spacing: 1px; }
+
+  #scope { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at 50% 50%, transparent 0, transparent 33vmin, rgba(0,0,0,.92) 33.3vmin, #000 36vmin); }
+  #scope::before, #scope::after { content: ""; position: absolute; background: #000; }
+  #scope::before { left: 0; right: 0; top: 50%; height: 1px; }
+  #scope::after { top: 0; bottom: 0; left: 50%; width: 1px; }
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  #hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(circle, transparent 45%, rgba(200,0,0,.55) 100%); }
+
+  /* ---------- Paneller ---------- */
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 26px 30px; width: 560px; max-width: 100%; max-height: 100%; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+  .panel.small { width: 440px; }
+  h1 { margin: 0; font-size: 44px; letter-spacing: 3px; color: #fff; font-family: Impact, "Arial Black", sans-serif; }
+  h1 span { color: var(--hud); margin-left: 8px; }
+  h2 { margin: 0 0 14px; color: var(--hud); }
+  .subtitle { color: #b9a98a; margin: 4px 0 20px; font-size: 13px; letter-spacing: 1px; }
+  label { display: block; margin: 12px 0 6px; font-size: 13px; color: #ccc; }
+  input[type=text], #nameInput { width: 100%; padding: 10px 12px; margin-top: 6px; background: #0d0c0a; border: 1px solid var(--line); color: #fff; font: inherit; font-size: 16px; border-radius: 4px; outline: none; user-select: text; }
+  input[type=range] { width: 100%; }
+  button { font: inherit; cursor: pointer; border-radius: 4px; }
+  .teams { display: flex; gap: 12px; margin-top: 18px; }
+  .team { flex: 1; padding: 18px 10px; border: 2px solid; background: rgba(0,0,0,.4); color: #fff; text-align: center; transition: transform .1s, background .1s; }
+  .team b { display: block; font-size: 17px; letter-spacing: 1px; }
+  .team small { display: block; margin-top: 4px; opacity: .75; }
+  .team.t { border-color: var(--t); } .team.t b { color: var(--t); }
+  .team.ct { border-color: var(--ct); } .team.ct b { color: var(--ct); }
+  .team:hover { transform: translateY(-2px); background: rgba(255,255,255,.07); }
+  .secondary, #resumeBtn { width: 100%; margin-top: 12px; padding: 10px; background: rgba(255,178,40,.12); color: var(--hud); border: 1px solid var(--hud-dim); }
+  #resumeBtn { background: var(--hud); color: #1a1408; font-weight: bold; border: 0; }
+  #menuStatus { margin-top: 14px; font-size: 12px; color: #aaa; text-align: center; }
+  .controls { margin-top: 18px; font-size: 12px; color: #aaa; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+  .controls b { color: var(--hud); font-weight: normal; font-family: Consolas, monospace; }
+
+  #scoreboard .panel { width: 760px; }
+  #scoreboard table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px; }
+  #scoreboard th { text-align: left; font-weight: normal; color: #999; border-bottom: 1px solid var(--line); padding: 4px 6px; }
+  #scoreboard td { padding: 4px 6px; }
+  #scoreboard tr.me td { background: rgba(255,255,255,.08); }
+  #scoreboard tr.dead td { opacity: .45; }
+  #scoreboard .hdr { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0; font-weight: bold; font-size: 16px; }
+
+  #buymenu .panel { width: 860px; }
+  #buyCols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .bcol { border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+  .bcol.active { border-color: var(--hud); background: rgba(255,178,40,.06); }
+  .bcol h3 { margin: 0 0 8px; font-size: 13px; color: var(--hud); }
+  .bitem { display: flex; justify-content: space-between; width: 100%; padding: 7px 8px; margin-bottom: 5px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.08); color: #eee; font-size: 13px; text-align: left; }
+  .bitem:hover:not(:disabled) { border-color: var(--hud); }
+  .bitem:disabled { opacity: .35; cursor: default; }
+  .bitem .k { color: var(--hud); margin-right: 6px; font-family: Consolas, monospace; }
+  .bitem .p { color: #8fd18f; }
+  .bitem.owned { border-color: #6dff6d55; }
+  #buyFoot { display: flex; justify-content: space-between; margin-top: 12px; font-size: 13px; color: #aaa; }
+  #buyMoney { color: #8fd18f; font-weight: bold; font-size: 18px; }
+</style>
+<script type="importmap">{ "imports": { "three": "/three/three.module.js" } }</script>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud" class="hidden">
+  <canvas id="radar" width="190" height="190"></canvas>
+  <div id="topbar">
+    <div class="sc t"><small>T</small><span id="scoreT">0</span></div>
+    <div id="timer"><small id="roundLbl">ISINMA</small><span id="timerVal">--:--</span></div>
+    <div class="sc ct"><small>CT</small><span id="scoreCT">0</span></div>
+  </div>
+  <div id="killfeed"></div>
+  <div id="chat"><div id="chatlog"></div><input id="chatinput" class="hidden" maxlength="120" autocomplete="off"></div>
+  <div id="crosshair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i></div>
+  <div id="center"><div id="centerMain"></div><div id="centerSub"></div></div>
+  <div id="hint"></div>
+  <div id="enemyName"></div>
+  <div id="note"></div>
+  <div id="spec"></div>
+  <div id="progress" class="hidden"><div id="progressLabel"></div><div class="bar"><div id="progressFill"></div></div></div>
+  <div id="bottom">
+    <div class="blk" id="hpBlk"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><span id="hpVal">100</span></div>
+    <div class="blk" id="arBlk"><svg viewBox="0 0 24 24"><path d="M12 1l9 4v6c0 6-4 10.5-9 12C7 21.5 3 17 3 11V5z"/></svg><span id="arVal">0</span></div>
+    <div id="icons"></div>
+    <div id="moneyDelta"></div>
+    <div class="blk" id="moneyBlk">$<span id="moneyVal">0</span></div>
+    <div class="blk" id="ammoBlk"><span id="magVal"></span><span class="sep" id="ammoSep">|</span><span class="res" id="resVal"></span></div>
+    <div id="wname"></div>
+  </div>
+</div>
+
+<div id="scope" class="hidden"></div>
+<div id="flash"></div>
+<div id="hurt"></div>
+
+<div id="scoreboard" class="overlay hidden" style="background:transparent; pointer-events:none">
+  <div class="panel" id="sbBody"></div>
+</div>
+
+<div id="buymenu" class="overlay hidden" style="background:rgba(0,0,0,.35)">
+  <div class="panel">
+    <h2>Satın Alma Menüsü</h2>
+    <div id="buyCols"></div>
+    <div id="buyFoot"><span>Önce kategori numarası, sonra eşya numarası · B / Esc: kapat</span><span id="buyMoney">$0</span></div>
+  </div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="panel">
+    <h1>DUST<span>STRIKE</span></h1>
+    <div class="subtitle">de_kum · CS 1.6 tarzı çevrimiçi FPS</div>
+    <label>Oyuncu adın<input id="nameInput" maxlength="16" placeholder="Adını yaz" autocomplete="off"></label>
+    <div class="teams">
+      <button class="team t" data-team="T"><b>TERÖRİSTLER</b><small id="cntT">0 oyuncu</small></button>
+      <button class="team ct" data-team="CT"><b>ANTİ-TERÖR</b><small id="cntCT">0 oyuncu</small></button>
+    </div>
+    <button class="secondary" data-team="auto">Otomatik takım seç</button>
+    <div id="menuStatus">Sunucuya bağlanılıyor…</div>
+    <div class="controls">
+      <b>W A S D</b><span>Hareket · <b>Shift</b> yürü · <b>C / Ctrl</b> eğil · <b>Boşluk</b> zıpla</span>
+      <b>Sol / Sağ tık</b><span>Ateş · nişan dürbünü / bıçak saplama</span>
+      <b>1 2 3 4 5</b><span>Ana silah · tabanca · bıçak · bombalar · C4 (<b>Q</b> son silah)</span>
+      <b>R</b><span>Şarjör değiştir · <b>G</b> silahı at</span>
+      <b>B</b><span>Satın alma menüsü (doğuş alanında, raund başında)</span>
+      <b>E</b><span>Basılı tut: bomba kur (T) / imha et (CT)</span>
+      <b>Tab</b><span>Skor tablosu · <b>Y</b> sohbet · <b>U</b> takım sohbeti · <b>M</b> takım değiştir</span>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="panel small">
+    <h2>Duraklatıldı</h2>
+    <button id="resumeBtn">Oyuna dön</button>
+    <label>Fare hassasiyeti: <span id="sensVal"></span><input type="range" id="sens" min="0.2" max="5" step="0.1"></label>
+    <label>Ses düzeyi<input type="range" id="vol" min="0" max="1" step="0.05"></label>
+    <button id="teamBtn" class="secondary">Takım değiştir (M)</button>
+    <div class="controls">
+      <b>Tab</b><span>Skor tablosu</span>
+      <b>B</b><span>Satın al</span>
+      <b>Y / U</b><span>Sohbet / takım sohbeti</span>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
