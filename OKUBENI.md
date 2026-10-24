@@ -46,7 +46,18 @@ Notlar: Ücretsiz planda 15 dakika kimse oynamazsa sunucu uyur; ilk giren kişi 
 - Para sistemi: başlangıç $800, leş $300 (bıçak $1500, AWP $100), raund kazanma $3250, kaybetme $1400+.
 - İlk 10 raundu alan takım maçı kazanır.
 
-## Kontroller
+## Telefondan oynamak (Android / iOS)
+
+Aynı link telefonda açılınca oyun dokunmatik kontrollere geçer. Telefonu yatay tut.
+
+- Sol taraf: parmağını kaydırarak hareket et (az itersen sessiz yürürsün)
+- Sağ taraf: parmağını kaydırarak etrafa bak; ATEŞ butonuna basılıyken kaydırınca da nişan alırsın
+- Butonlar: ATEŞ, ZIPLA, EĞİL, ŞARJÖR, SİLAH, DÜRBÜN / SAPLA, bölgedeyken KUR / İMHA
+- Üst sağ: $ (satın al), SOHBET, SKOR, ☰ (menü / takım değiştir)
+- Android'de oyun tam ekran açılır. iPhone'da tam ekran için Safari'de **Paylaş → Ana Ekrana Ekle** yap, oradan aç.
+- iPhone'un yan tarafındaki sessiz düğmesi açıksa oyun sesleri duyulmaz.
+
+## Kontroller (bilgisayar)
 
 | Tuş | İşlev |
 | --- | --- |

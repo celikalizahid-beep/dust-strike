@@ -130,7 +130,7 @@ export class HUD {
     i.classList.remove('hidden');
     i.placeholder = teamOnly ? 'Takım sohbeti (Enter gönder, Esc iptal)' : 'Herkese (Enter gönder, Esc iptal)';
     i.value = '';
-    setTimeout(() => i.focus(), 0);
+    i.focus(); // iOS klavyeyi sadece dokunma olayı içinde yapılan odaklamada açar
   }
   closeChat() { const i = $('chatinput'); const v = i.value; i.blur(); i.classList.add('hidden'); return v; }
 

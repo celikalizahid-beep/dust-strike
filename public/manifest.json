@@ -1,0 +1,13 @@
+{
+  "name": "DUST STRIKE",
+  "short_name": "DUST STRIKE",
+  "description": "CS 1.6 tarzı çevrimiçi FPS",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

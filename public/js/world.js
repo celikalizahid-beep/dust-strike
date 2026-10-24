@@ -195,7 +195,7 @@ class GeoBuilder {
 }
 
 // ---------------------------------------------------------------- Dünya
-export function buildWorld(scene, map) {
+export function buildWorld(scene, map, opts = {}) {
   const T = makeTextures();
   const mats = {
     brick: new THREE.MeshStandardMaterial({ map: T.brick, vertexColors: true, roughness: 0.95 }),
@@ -268,7 +268,8 @@ export function buildWorld(scene, map) {
   const sun = new THREE.DirectionalLight(0xfff0d6, 2.7);
   sun.position.set(38, 70, 22);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  const ss = opts.shadowSize || 2048;
+  sun.shadow.mapSize.set(ss, ss);
   const sc = sun.shadow.camera;
   sc.left = -62; sc.right = 62; sc.top = 62; sc.bottom = -62; sc.near = 1; sc.far = 220;
   sun.shadow.bias = -0.0004;

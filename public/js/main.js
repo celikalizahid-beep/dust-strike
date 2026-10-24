@@ -8,8 +8,13 @@ import { createPlayerModel, createWeaponModel, Viewmodel, makeNameSprite } from 
 import * as sfx from './audio.js';
 import { Effects } from './effects.js';
 import { HUD } from './hud.js';
+import { IS_TOUCH, TouchControls, goFullscreen } from './touch.js';
 
 const MAP = buildMap();
+// Cihaza göre metinler (telefonda tuş yerine buton adları)
+const TXT = IS_TOUCH
+  ? { buy: 'Satın almak için $ butonu', plant: 'Bombayı kurmak için KUR butonunu basılı tut', defuse: 'İmha etmek için İMHA butonunu basılı tut', bombNote: 'C4 sende! A veya B bölgesine git, KUR butonunu basılı tut.', next: 'ATEŞ: sonraki oyuncu' }
+  : { buy: 'Satın almak için B', plant: 'Bombayı kurmak için E tuşunu basılı tut', defuse: 'İmha etmek için E tuşunu basılı tut', bombNote: 'C4 sende! 5 tuşu ile seç, A veya B bölgesinde E tuşunu basılı tut.', next: 'sonraki oyuncu için tıkla' };
 const NADE_ORDER = ['he', 'flash', 'smoke'];
 const BASE_FOV = 74;
 
@@ -27,7 +32,7 @@ function lerpAngle(a, b, f) {
 
 // ---------------------------------------------------------------- Görüntü
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, IS_TOUCH ? 1.25 : 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -40,7 +45,7 @@ const canvas = renderer.domElement;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.05, 600);
 camera.rotation.order = 'YXZ';
-const world = buildWorld(scene, MAP);
+const world = buildWorld(scene, MAP, { shadowSize: IS_TOUCH ? 1024 : 2048 });
 const fx = new Effects(scene, MAP.boxes);
 
 const vmScene = new THREE.Scene();
@@ -76,10 +81,19 @@ const itemMeshes = new Map();
 const act = { kind: null, start: 0, dur: 0, tick: 0 };
 const view = {
   deathAt: 0, deathPos: new THREE.Vector3(), deathYaw: 0, deathPitch: 0, specId: 0, shake: 0,
-  blindT0: 0, blindDur: 0, blindK: 0, hurt: 0, nextBeep: 0, ledOff: 0, aimCheck: 0,
+  blindT0: 0, blindDur: 0, blindK: 0, hurt: 0, nextBeep: 0, ledOff: 0, aimCheck: 0, useLabel: null,
   settings: loadSettings(),
 };
-let locked = false, chatOpen = false, chatTeam = false, menuOpen = false, nadeCid = 0;
+let locked = false, chatOpen = false, chatTeam = false, menuOpen = false, pauseOpen = false, scoreShown = false, nadeCid = 0;
+let touch = null;
+
+function setPause(v) {
+  pauseOpen = v;
+  hud.showPause(v);
+  if (v && touch) touch.releaseAll();
+}
+// Masaüstünde fare kilitliyken, telefonda menü açık değilken kontroller aktif
+const controlsOn = () => (IS_TOUCH ? S.joined && !pauseOpen && !menuOpen : locked);
 
 function loadSettings() {
   let s = {};
@@ -100,7 +114,9 @@ function connect() {
     S.joined = false; S.alive = false;
     for (const id of [...remotes.keys()]) removeRemote(id);
     S.roster.clear();
-    hud.setVisible(false); hud.showPause(false); hud.closeBuy(); hud.showMenu(true);
+    hud.setVisible(false); setPause(false); hud.closeBuy(); hud.showMenu(true);
+    if (touch) touch.setVisible(false);
+    document.body.classList.remove('playing');
     if (document.pointerLockElement) document.exitPointerLock();
     setTimeout(connect, 2000);
   };
@@ -122,7 +138,7 @@ function onMessage(m) {
       S.phaseEnd = m.left ? now + m.left : 0;
       S.buyEnd = now + m.buyLeft;
       hud.setScore(m.score.T, m.score.CT);
-      if (m.phase === 'freeze' && m.round !== prevRound) { fx.clearRound(); hud.center(m.msg, 'Satın almak için B', 3000); }
+      if (m.phase === 'freeze' && m.round !== prevRound) { fx.clearRound(); hud.center(m.msg, TXT.buy, 3000); }
       else if (m.msg && m.msg !== S.msg && (m.phase === 'warmup' || m.phase === 'gameover')) hud.center(m.msg, '', 4500);
       if (prevPhase === 'freeze' && m.phase === 'live' && S.joined) { sfx.roundStart(); hud.center('Hadi, hadi, hadi!', '', 1500); }
       S.msg = m.msg;
@@ -201,7 +217,7 @@ function applyRoster(ps) {
   }
   for (const id of [...S.roster.keys()]) if (!seen.has(id)) { S.roster.delete(id); removeRemote(id); }
   hud.menuCounts(t, ct);
-  if (input.keys.Tab) showScoreboard();
+  if (input.keys.Tab || scoreShown) showScoreboard();
 }
 
 function applySnap(ps, now) {
@@ -390,7 +406,7 @@ function onBomb(b, now) {
   const hadBomb = prev && prev.state === 'carried' && prev.carrier === S.myId;
   const hasNow = hasBomb();
   if (hadBomb && !hasNow) { if (act.kind === 'plant') act.kind = null; if (W.cur === 'bomb') switchWeapon(bestWeapon()); }
-  if (!hadBomb && hasNow) hud.note('C4 sende! 5 tuşu ile seç, A veya B bölgesinde E tuşunu basılı tut.', 5000);
+  if (!hadBomb && hasNow) hud.note(TXT.bombNote, 5000);
   if (b && (b.state === 'dropped' || b.state === 'planted' || b.state === 'defused') && b.pos) {
     bombModel.visible = true;
     bombModel.position.set(b.pos[0], b.pos[1] + 0.06, b.pos[2]);
@@ -671,7 +687,7 @@ function updateWeapon(dt, now) {
   if (W.autoReload && now >= W.nextFire) { W.autoReload = false; startReload(); }
   if (W.scopeResume && now >= W.nextFire && !W.reloadEnd) { W.scope = W.scopeResume; W.scopeResume = 0; }
 
-  const canAct = locked && !chatOpen && !hud.buyOpen && S.phase !== 'freeze' && act.kind === null &&
+  const canAct = controlsOn() && !chatOpen && !hud.buyOpen && S.phase !== 'freeze' && act.kind === null &&
     now >= W.nextFire && now >= W.drawEnd && !W.reloadEnd;
   if (canAct) {
     if (w.melee) {
@@ -684,7 +700,7 @@ function updateWeapon(dt, now) {
       if (w.auto ? input.mouseL : input.lPressed) fireGun(now);
     }
   }
-  if (input.rPressed && w.scope && locked && !W.reloadEnd && now >= W.drawEnd) {
+  if (input.rPressed && w.scope && controlsOn() && !W.reloadEnd && now >= W.drawEnd) {
     W.scope = (W.scope + 1) % 3;
     W.scopeResume = 0;
     sfx.dry();
@@ -705,7 +721,8 @@ function updateAction(now) {
   const nearBomb = S.team === 'CT' && S.phase === 'live' && b && b.state === 'planted' &&
     Math.hypot(P.pos.x - b.pos[0], P.pos.z - b.pos[2]) < 1.9 && Math.abs(P.pos.y - b.pos[1]) < 1.4;
   const holdE = !!input.keys.KeyE && !chatOpen;
-  const wantPlant = canPlant && (holdE || (W.cur === 'bomb' && input.mouseL && locked));
+  const wantPlant = canPlant && (holdE || (W.cur === 'bomb' && input.mouseL && controlsOn()));
+  view.useLabel = canPlant || act.kind === 'plant' ? 'KUR' : nearBomb ? 'İMHA' : null;
   const wantDefuse = nearBomb && holdE && (!b.defuser || b.defuser === S.myId);
   if (act.kind === 'plant' && !wantPlant) cancelAction();
   if (act.kind === 'defuse' && !wantDefuse) cancelAction();
@@ -727,8 +744,8 @@ function updateAction(now) {
   } else {
     hud.progress(null);
     let hint = '';
-    if (canPlant) hint = 'Bombayı kurmak için E tuşunu basılı tut';
-    else if (nearBomb) hint = b.defuser && b.defuser !== S.myId ? 'Takım arkadaşın bombayı imha ediyor' : `İmha etmek için E tuşunu basılı tut (${S.kit ? '5' : '10'} sn)`;
+    if (canPlant) hint = TXT.plant;
+    else if (nearBomb) hint = b.defuser && b.defuser !== S.myId ? 'Takım arkadaşın bombayı imha ediyor' : `${TXT.defuse} (${S.kit ? '5' : '10'} sn)`;
     else if (W.cur === 'bomb' && S.phase === 'live') hint = 'Bombayı A veya B bölgesine kurmalısın';
     hud.hint(hint);
   }
@@ -763,6 +780,7 @@ function updateLocal(dt, now) {
     if (k.KeyS) fz -= 1;
     if (k.KeyD) fx2 += 1;
     if (k.KeyA) fx2 -= 1;
+    if (touch) { fx2 += touch.move.x; fz -= touch.move.y; }
   }
   const sin = Math.sin(P.yaw), cos = Math.cos(P.yaw);
   let wx = -sin * fz + cos * fx2, wz = -cos * fz - sin * fx2;
@@ -782,7 +800,8 @@ function updateLocal(dt, now) {
   if (W.scope > 0) maxSp *= 0.72;
   if (k.ShiftLeft || k.ShiftRight) maxSp *= 0.52;
   if (P.crouch > 0.5) maxSp *= 0.36;
-  const wish = wl > 0 ? maxSp : 0;
+  // Joystick yarım itilirse yavaş yürür (adım sesi çıkmaz), klavyede her zaman tam hız
+  const wish = wl > 0.05 ? maxSp * Math.min(1, wl) : 0;
 
   if (P.onGround) {
     const sp = Math.hypot(P.vel.x, P.vel.z);
@@ -843,7 +862,7 @@ function updateCamera(dt, now) {
         camera.rotation.set(specR.pitch, specR.yaw, 0);
         vmVisible = !!specR.w;
         if (vm.name !== specR.w || vm.team !== specR.team) vm.set(specR.w, specR.team, true);
-        hud.spec(`İzleniyor: <b>${esc(specR.name)}</b> · sonraki oyuncu için tıkla`);
+        hud.spec(`İzleniyor: <b>${esc(specR.name)}</b> · ${TXT.next}`);
       } else {
         const t = now * 0.00004;
         camera.position.set(Math.sin(t) * 30, 34, Math.cos(t) * 26);
@@ -877,6 +896,7 @@ function buyCtx() {
 }
 function openBuy() {
   if (!S.alive) return;
+  if (touch) touch.releaseAll();
   const now = performance.now();
   if (!canBuyHere(now)) {
     hud.note(S.phase !== 'warmup' && now >= S.buyEnd ? 'Satın alma süresi doldu' : 'Satın alma alanında değilsin (doğuş noktasına dön)');
@@ -976,6 +996,7 @@ function updateBombBeep(now) {
 
 // ---------------------------------------------------------------- Girdi
 function requestLock() {
+  if (IS_TOUCH) return;
   const plain = () => {
     try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch { /* yok say */ }
   };
@@ -989,13 +1010,13 @@ function requestLock() {
 
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
-  if (locked) hud.showPause(false);
+  if (locked) setPause(false);
   else {
     input.mouseL = input.mouseR = false;
-    if (S.joined && !hud.buyOpen && !chatOpen && !menuOpen) hud.showPause(true);
+    if (S.joined && !hud.buyOpen && !chatOpen && !menuOpen) setPause(true);
   }
 });
-document.addEventListener('pointerlockerror', () => { if (S.joined && !hud.buyOpen && !menuOpen) hud.showPause(true); });
+document.addEventListener('pointerlockerror', () => { if (S.joined && !hud.buyOpen && !menuOpen) setPause(true); });
 
 canvas.addEventListener('mousedown', (e) => {
   sfx.init();
@@ -1027,15 +1048,15 @@ function digitOf(code) {
 window.addEventListener('keydown', (e) => {
   if (document.activeElement === nameInput) return;
   if (chatOpen) {
-    if (e.code === 'Enter') {
-      const text = hud.closeChat().trim();
+    if (e.code === 'Enter' || e.key === 'Enter') {
       chatOpen = false;
+      const text = hud.closeChat().trim();
       if (text) send({ t: 'chat', text, tm: chatTeam });
       requestLock();
     } else if (e.code === 'Escape') {
-      hud.closeChat();
       chatOpen = false;
-      if (!document.pointerLockElement) hud.showPause(true);
+      hud.closeChat();
+      if (!IS_TOUCH && !document.pointerLockElement) setPause(true);
     }
     return;
   }
@@ -1095,12 +1116,15 @@ for (const btn of document.querySelectorAll('[data-team]')) {
     menuOpen = false;
     hud.showMenu(false);
     hud.setVisible(true);
+    document.body.classList.add('playing');
+    if (touch) { touch.setVisible(true); goFullscreen(); }
     requestLock();
   });
 }
 function openTeamMenu() {
   menuOpen = true;
-  hud.showPause(false);
+  setPause(false);
+  if (touch) touch.releaseAll();
   hud.showMenu(true);
   if (document.pointerLockElement) document.exitPointerLock();
 }
@@ -1120,8 +1144,65 @@ sensEl.addEventListener('input', () => {
   saveSettings();
 });
 volEl.addEventListener('input', () => { view.settings.vol = Number(volEl.value); sfx.setVolume(view.settings.vol); saveSettings(); });
-document.getElementById('resumeBtn').addEventListener('click', () => { sfx.init(); requestLock(); });
+document.getElementById('resumeBtn').addEventListener('click', () => {
+  sfx.init();
+  if (IS_TOUCH) { setPause(false); goFullscreen(); } else requestLock();
+});
 document.getElementById('teamBtn').addEventListener('click', openTeamMenu);
+document.getElementById('buyClose').addEventListener('click', closeBuy);
+
+// ---------------------------------------------------------------- Dokunmatik (Android / iOS)
+function touchPress(act, down) {
+  sfx.init();
+  switch (act) {
+    case 'fire':
+      if (!S.alive) { if (down) cycleSpec(1); return; }
+      input.mouseL = down;
+      if (down) input.lPressed = true;
+      break;
+    case 'alt': input.mouseR = down; if (down) input.rPressed = true; break;
+    case 'jump': if (down) input.jumpAt = performance.now(); break;
+    case 'crouch': if (down) input.keys.KeyC = !input.keys.KeyC; break;
+    case 'reload': if (down) startReload(); break;
+    case 'switch': if (down && S.alive) cycleWeapon(1); break;
+    case 'use': input.keys.KeyE = down; break;
+    case 'buy': if (down) openBuy(); break;
+    case 'score':
+      if (!down) break;
+      scoreShown = !scoreShown;
+      if (scoreShown) showScoreboard(); else hud.scoreboard(false);
+      break;
+    // Klavyenin açılması için odaklama parmak kalkınca yapılmalı (iOS kuralı)
+    case 'chat': if (!down) { chatOpen = true; chatTeam = false; hud.openChat(false); } break;
+    case 'menu': if (down) setPause(true); break;
+  }
+}
+
+if (IS_TOUCH) {
+  document.body.classList.add('touch');
+  touch = new TouchControls({
+    look: (dx, dy) => {
+      if (!S.alive || hud.buyOpen || pauseOpen || menuOpen) return;
+      const k = view.settings.sens * 0.0032 * (camera.fov / BASE_FOV);
+      P.yaw -= dx * k;
+      P.pitch = clamp(P.pitch - dy * k, -1.55, 1.55);
+      vm.look(dx * 0.5, dy * 0.5);
+    },
+    press: touchPress,
+  });
+  // Klavye kapatılırsa sohbeti de kapat
+  document.getElementById('chatinput').addEventListener('blur', () => { if (chatOpen) { chatOpen = false; hud.closeChat(); } });
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  window.addEventListener('orientationchange', () => setTimeout(() => window.dispatchEvent(new Event('resize')), 300));
+}
+
+function updateTouchUI(now) {
+  if (!touch) return;
+  const w = WEAPONS[W.cur];
+  let alt = null;
+  if (S.alive && w) alt = w.scope ? 'DÜRBÜN' : w.melee ? 'SAPLA' : w.nade ? 'YAKIN AT' : null;
+  touch.update({ alive: S.alive, alt, use: S.alive ? view.useLabel : null, buy: canBuyHere(now), crouch: !!input.keys.KeyC });
+}
 
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1142,7 +1223,7 @@ function frame(now) {
   last = now;
 
   if (S.joined && S.alive) { updateLocal(dt, now); updateAction(now); }
-  else { hud.hint(''); hud.progress(null); }
+  else { hud.hint(''); hud.progress(null); view.useLabel = null; }
   updateWeapon(dt, now);
   input.lPressed = input.rPressed = false;
 
@@ -1168,7 +1249,8 @@ function frame(now) {
   sfx.setListener(camera.position, tmpF, tmpUp);
 
   updateHUD(now, dt);
-  if (hud.buyOpen && !canBuyHere(now)) { hud.closeBuy(); if (!locked) hud.showPause(true); }
+  updateTouchUI(now);
+  if (hud.buyOpen && !canBuyHere(now)) { hud.closeBuy(); if (!IS_TOUCH && !locked) setPause(true); }
 
   renderer.clear();
   renderer.render(scene, camera);
