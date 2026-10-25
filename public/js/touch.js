@@ -271,12 +271,17 @@ export function goFullscreen() {
 }
 
 // ---------------- Jiroskop ile nişan
-// Telefonun dönüş hızı (derece/sn) ekran yönüne göre bakış açısına çevrilir.
+// Telefonun dönüş hızı (derece/sn) bakış açısına çevrilir. Telefonun nasıl tutulduğu (yatay/dikey)
+// ekran açısından değil yerçekimi yönünden bulunur: bazı tarayıcılar ve uygulama içi WebView ekran
+// açısını yanlış bildirdiği için yatayda yukarı-aşağı hareket sağa-sola dönüşüyordu.
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
 export class Gyro {
   constructor(onTurn) {
     this.onTurn = onTurn;
     this.enabled = false;
     this.last = 0;
+    this.gx = 0; this.gy = 0; this.axis = null;
     this.handler = (e) => this.onMotion(e);
   }
   async enable() {
@@ -287,6 +292,7 @@ export class Gyro {
       try { if ((await DME.requestPermission()) !== 'granted') return 'denied'; } catch { return 'denied'; }
     }
     window.addEventListener('devicemotion', this.handler);
+    this.gInit = false; this.axis = null;
     this.enabled = true;
     this.last = 0;
     return 'ok';
@@ -302,15 +308,35 @@ export class Gyro {
     const dt = this.last ? Math.min(0.05, (now - this.last) / 1000) : 0;
     this.last = now;
     if (!dt) return;
-    const angle = (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0;
-    const a = ((angle % 360) + 360) % 360;
-    const beta = r.beta || 0, gamma = r.gamma || 0;
-    let yawRate, pitchRate;
-    if (a === 90) { yawRate = beta; pitchRate = -gamma; }
-    else if (a === 270) { yawRate = -beta; pitchRate = gamma; }
-    else if (a === 180) { yawRate = -gamma; pitchRate = -beta; }
-    else { yawRate = gamma; pitchRate = beta; }
+    // Ekranın "yukarı" yönü (u): yerçekimi okumasından, aynı olaydaki dönüş verisiyle aynı eksen sisteminde
+    const g = e.accelerationIncludingGravity;
+    if (g && g.x !== null && g.x !== undefined) {
+      const s = IS_IOS ? -1 : 1; // iOS yerçekimini ters işaretle bildirir
+      if (!this.gInit) { this.gx = g.x * s; this.gy = g.y * s; this.gInit = true; }
+      this.gx += (g.x * s - this.gx) * 0.15;
+      this.gy += (g.y * s - this.gy) * 0.15;
+    }
+    let ux, uy;
+    const ax = Math.abs(this.gx), ay = Math.abs(this.gy);
+    if (Math.max(ax, ay) > 3) {
+      // Hangi eksen dikeyse onu kullan; titremeyi önlemek için diğeri belirgin büyük olunca değiştir
+      if (!this.axis) this.axis = ax > ay ? 'x' : 'y';
+      else if (this.axis === 'x' && ay > ax * 1.4) this.axis = 'y';
+      else if (this.axis === 'y' && ax > ay * 1.4) this.axis = 'x';
+      ux = this.axis === 'x' ? Math.sign(this.gx) : 0;
+      uy = this.axis === 'y' ? Math.sign(this.gy) : 0;
+    } else {
+      // Telefon düz tutuluyorsa ekran açısına dön
+      const angle = screen.orientation?.angle ?? window.orientation ?? 0;
+      const a = ((angle % 360) + 360) % 360;
+      [ux, uy] = a === 90 ? [1, 0] : a === 270 ? [-1, 0] : a === 180 ? [0, -1] : [0, 1];
+    }
+    // Sağa-sola dönüş = "yukarı" eksen etrafında, yukarı-aşağı bakış = ekranın yatay ekseni etrafında
+    const beta = r.beta || 0, gamma = r.gamma || 0; // beta: x ekseni, gamma: y ekseni (derece/sn)
+    const yawRate = beta * ux + gamma * uy;
+    const pitchRate = beta * uy - gamma * ux;
     const k = Math.PI / 180 * dt;
     this.onTurn(yawRate * k, pitchRate * k);
   }
+  get orientation() { return this.axis === 'x' ? 'yatay' : this.axis === 'y' ? 'dikey' : '?'; }
 }

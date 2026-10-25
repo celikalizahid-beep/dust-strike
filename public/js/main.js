@@ -152,6 +152,7 @@ function setPause(v) {
   pauseOpen = v;
   hud.showPause(v);
   if (v && touch) touch.releaseAll();
+  if (v && typeof gyro !== 'undefined' && gyro.enabled) document.getElementById('gyroNote').textContent = `Açık · algılanan tutuş: ${gyro.orientation}`;
 }
 // Masaüstünde fare kilitliyken, telefonda menü açık değilken kontroller aktif
 const controlsOn = () => (IS_TOUCH ? S.joined && !pauseOpen && !menuOpen : locked);
@@ -1083,7 +1084,8 @@ function updateHUD(now, dt) {
   hud.icons({ buy: canBuyHere(now), bomb: hasBomb(), kit: S.alive && S.kit, helmet: S.alive && S.helmet });
   const spread = S.alive ? currentSpread(w) : 0;
   const adsNow = S.alive && W.scope > 0 && w && !w.scope;
-  hud.crosshair(4 + spread * 420, S.alive ? W.scope === 0 && !(w && w.scope) : !!specR);
+  // Her silahta nişangah (dürbünlü silahlarda dürbün kapalıyken de); açıklık o anki sapmayı gösterir
+  hud.crosshair(Math.min(48, 4 + spread * 420), S.alive ? W.scope === 0 : !!specR, !!(S.alive && w && (w.scope || spread > 0.03)));
   hud.redDot(adsNow);
   hud.scope(S.alive && W.scope > 0 && !!w?.scope);
   view.hurt = Math.max(0, view.hurt - dt * 1.5);

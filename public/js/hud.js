@@ -76,7 +76,8 @@ export class HUD {
     const html = (buy ? '<span class="buy">$ SATIN AL</span>' : '') + (bomb ? '<span class="bomb">C4</span>' : '') + (kit ? '<span>KİT</span>' : '') + (helmet ? '<span>KASK</span>' : '');
     this.set('icons', html, 'innerHTML');
   }
-  crosshair(gap, visible) {
+  crosshair(gap, visible, dot = false) {
+    this.toggle('crosshair', 'dot', dot);
     const g = Math.round(gap);
     if (this.cache.gap !== g) { this.cache.gap = g; $('crosshair').style.setProperty('--gap', g + 'px'); }
     this.toggle('crosshair', 'hidden', !visible);

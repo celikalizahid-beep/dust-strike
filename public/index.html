@@ -53,6 +53,8 @@
   #crosshair .t, #crosshair .b { width: 2px; height: 8px; left: -1px; }
   #crosshair .l { right: var(--gap); } #crosshair .r { left: var(--gap); }
   #crosshair .t { bottom: var(--gap); } #crosshair .b { top: var(--gap); }
+  #crosshair .c { display: none; width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; }
+  #crosshair.dot .c { display: block; }
   #center { position: absolute; top: 24%; left: 0; right: 0; text-align: center; }
   #centerMain { font-size: 34px; font-weight: bold; color: #fff; letter-spacing: 1px; }
   #centerSub { font-size: 16px; color: #ddd; margin-top: 6px; }
@@ -263,7 +265,7 @@
   </div>
   <div id="killfeed"></div>
   <div id="chat"><div id="chatlog"></div><input id="chatinput" class="hidden" maxlength="120" autocomplete="off"></div>
-  <div id="crosshair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i></div>
+  <div id="crosshair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i><i class="c"></i></div>
   <div id="reddot" class="hidden"></div>
   <div id="center"><div id="centerMain"></div><div id="centerSub"></div></div>
   <div id="hint"></div>
