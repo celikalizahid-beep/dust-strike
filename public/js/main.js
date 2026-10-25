@@ -163,7 +163,9 @@ function loadSettings() {
   return {
     sens: s.sens ?? 1.6, vol: s.vol ?? 0.6, name: s.name ?? '', mode: s.mode ?? 'classic', map: s.map ?? 'kum',
     quality: s.quality ?? 'auto', showFps: s.showFps ?? false,
-    gyro: s.gyro ?? false, gyroSens: s.gyroSens ?? 1.0, gyroInvX: s.gyroInvX ?? false, gyroInvY: s.gyroInvY ?? false,
+    gyro: s.gyro ?? false, gyroSens: s.gyroSens ?? 1.0, gyroAxes: s.gyroAxes ?? 'spec',
+    // Eksen düzeltmesiyle ters çevirme ayarlarının anlamı değişti: eski kayıtlarda bir kez sıfırlanır
+    gyroInvX: s.gyroVer === 2 ? (s.gyroInvX ?? false) : false, gyroInvY: s.gyroVer === 2 ? (s.gyroInvY ?? false) : false, gyroVer: 2,
   };
 }
 const isDM = () => S.mode !== 'classic';
@@ -1346,6 +1348,8 @@ const gyro = new Gyro((dYaw, dPitch) => {
   P.yaw += dYaw * k * (SETTINGS.gyroInvX ? -1 : 1);
   P.pitch = clamp(P.pitch + dPitch * k * (SETTINGS.gyroInvY ? -1 : 1), -1.55, 1.55);
 });
+gyro.mode = SETTINGS.gyroAxes;
+saveSettings(); // olası tek seferlik sıfırlamayı kaydet
 const gyroEl = document.getElementById('gyro'), gyroSensEl = document.getElementById('gyroSens');
 const gyroNote = (t) => { document.getElementById('gyroNote').textContent = t; };
 gyroEl.checked = SETTINGS.gyro;
@@ -1371,6 +1375,36 @@ gyroEl.addEventListener('change', async () => {
   } else { gyro.disable(); gyroNote(''); }
   SETTINGS.gyro = gyroEl.checked;
   saveSettings();
+});
+
+// Jiroskop kalibrasyonu: önce sağa çevir, sonra yukarı eğ. Eksen düzeni ve yönler otomatik ayarlanır.
+const calibBtn = document.getElementById('gyroCalib');
+calibBtn.addEventListener('click', async () => {
+  if (!gyro.enabled) {
+    const res = await gyro.enable();
+    if (res !== 'ok') { gyroNote(res === 'denied' ? 'Hareket sensörü izni verilmedi.' : 'Bu cihazda jiroskop bulunamadı.'); return; }
+    gyroEl.checked = true;
+    SETTINGS.gyro = true;
+  }
+  calibBtn.disabled = true;
+  gyroNote('1/2 · Telefonu oynarken tuttuğun gibi YATAY tut ve yavaşça SAĞA çevir…');
+  const turn = gyro.solveTurn(await gyro.record(3000));
+  if (!turn) {
+    gyroNote('Hareket algılanamadı. Tekrar dene: telefonu belirgin şekilde sağa çevir.');
+    calibBtn.disabled = false;
+    return;
+  }
+  gyro.mode = turn.mode;
+  gyroNote('2/2 · Şimdi telefonu yavaşça YUKARI doğru eğ (tavana bakar gibi)…');
+  const tilt = gyro.solveTilt(await gyro.record(3000), turn.mode);
+  SETTINGS.gyroAxes = turn.mode;
+  SETTINGS.gyroInvX = turn.invX;
+  if (tilt) SETTINGS.gyroInvY = tilt.invY;
+  document.getElementById('gyroInvX').checked = SETTINGS.gyroInvX;
+  document.getElementById('gyroInvY').checked = SETTINGS.gyroInvY;
+  saveSettings();
+  gyroNote(`Tamam! Jiroskop ayarlandı (${turn.mode === 'spec' ? 'standart' : 'eski tip'} eksenler${tilt ? '' : ', dikey yön değiştirilmedi'}). Oyuna dönüp dene.`);
+  calibBtn.disabled = false;
 });
 
 // Buton düzenleyici

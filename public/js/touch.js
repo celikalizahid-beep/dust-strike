@@ -282,6 +282,7 @@ export class Gyro {
     this.enabled = false;
     this.last = 0;
     this.gx = 0; this.gy = 0; this.axis = null;
+    this.mode = 'spec'; this.calib = null;
     this.handler = (e) => this.onMotion(e);
   }
   async enable() {
@@ -303,7 +304,7 @@ export class Gyro {
   }
   onMotion(e) {
     const r = e.rotationRate;
-    if (!r || r.alpha === null) return;
+    if (!r || (r.alpha === null && r.beta === null)) return;
     const now = performance.now();
     const dt = this.last ? Math.min(0.05, (now - this.last) / 1000) : 0;
     this.last = now;
@@ -331,12 +332,44 @@ export class Gyro {
       const a = ((angle % 360) + 360) % 360;
       [ux, uy] = a === 90 ? [1, 0] : a === 270 ? [-1, 0] : a === 180 ? [0, -1] : [0, 1];
     }
-    // Sağa-sola dönüş = "yukarı" eksen etrafında, yukarı-aşağı bakış = ekranın yatay ekseni etrafında
-    const beta = r.beta || 0, gamma = r.gamma || 0; // beta: x ekseni, gamma: y ekseni (derece/sn)
-    const yawRate = beta * ux + gamma * uy;
-    const pitchRate = beta * uy - gamma * ux;
+    // W3C standardı: alpha = x ekseni, beta = y ekseni, gamma = z ekseni (derece/sn).
+    // Eski düzeni kullanan cihazlar için ('old': beta = x, gamma = y) kalibrasyon modu değiştirir.
+    const a = r.alpha || 0, b = r.beta || 0, c = r.gamma || 0;
+    if (this.calib) {
+      const C = this.calib;
+      C.A += a; C.B += b; C.C += c;
+      C.absA += Math.abs(a); C.absB += Math.abs(b); C.absC += Math.abs(c);
+      C.axis = this.axis; C.ux = ux; C.uy = uy;
+    }
+    const wx = this.mode === 'old' ? b : a;
+    const wy = this.mode === 'old' ? c : b;
+    // Sağa-sola dönüş = ekranın "yukarı" ekseni etrafında, yukarı-aşağı bakış = ekranın yatay ekseni etrafında
+    const yawRate = wx * ux + wy * uy;
+    const pitchRate = wx * uy - wy * ux;
     const k = Math.PI / 180 * dt;
     this.onTurn(yawRate * k, pitchRate * k);
   }
   get orientation() { return this.axis === 'x' ? 'yatay' : this.axis === 'y' ? 'dikey' : '?'; }
+
+  // Kalibrasyon adımı: belirtilen süre boyunca ham dönüş verisini toplar
+  record(ms) {
+    this.calib = { A: 0, B: 0, C: 0, absA: 0, absB: 0, absC: 0, axis: null, ux: 0, uy: 1 };
+    return new Promise((resolve) => setTimeout(() => { const c = this.calib; this.calib = null; resolve(c); }, ms));
+  }
+  // 1. adım (telefonu SAĞA çevir): en çok değişen eksenden cihazın eksen düzeni ve yatay yön bulunur.
+  // Sağa dönüşte bakış açısı (yaw) azalmalı; artıyorsa yatay ters çevrilir.
+  solveTurn(c) {
+    if (!c.axis || c.absA + c.absB + c.absC < 150) return null;
+    const dom = c.absA >= c.absB && c.absA >= c.absC ? 'a' : c.absB >= c.absC ? 'b' : 'c';
+    const mode = c.axis === 'x' ? (dom === 'a' ? 'spec' : dom === 'b' ? 'old' : null) : (dom === 'b' ? 'spec' : dom === 'c' ? 'old' : null);
+    if (!mode) return null;
+    const wx = mode === 'old' ? c.B : c.A, wy = mode === 'old' ? c.C : c.B;
+    return { mode, invX: wx * c.ux + wy * c.uy > 0 };
+  }
+  // 2. adım (telefonu YUKARI eğ): yukarı bakış (pitch) artmalı; azalıyorsa dikey ters çevrilir
+  solveTilt(c, mode) {
+    if (c.absA + c.absB + c.absC < 100) return null;
+    const wx = mode === 'old' ? c.B : c.A, wy = mode === 'old' ? c.C : c.B;
+    return { invY: wx * c.uy - wy * c.ux < 0 };
+  }
 }
