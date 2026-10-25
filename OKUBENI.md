@@ -109,7 +109,8 @@ Aynı link telefonda açılınca oyun dokunmatik kontrollere geçer. Telefonu ya
 
 - **Android:** Sitedeki menüde "Android uygulamasını indir (APK)" bağlantısı var. İndirdikten sonra telefonda
   "bilinmeyen kaynaklardan yükleme" izni gerekir. Uygulama tam ekran ve yatay açılır, canlı sunucuya bağlanır.
-- **Windows:** `DustStrike.exe` (kurulum gerektirmez) GitHub'daki **Releases → latest** sayfasında. İlk açılışta
+- **Windows:** `DustStrike.exe` (kurulum gerektirmez): sitedeki menüde "Windows uygulamasını indir" ya da doğrudan
+  https://github.com/celikalizahid-beep/dust-strike/releases/latest/download/DustStrike.exe — İlk açılışta
   SmartScreen uyarısı çıkarsa "Ek bilgi → Yine de çalıştır". Ayrıca Chrome/Edge'de menüdeki
   "Bilgisayara uygulama olarak yükle" butonu oyunu Başlat menüsüne uygulama olarak ekler.
 - Uygulamalar GitHub Actions ile derlenir (`.github/workflows/apps.yml`): `apps/` klasörü değişince ya da

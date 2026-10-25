@@ -1326,6 +1326,8 @@ installBtn.addEventListener('click', async () => {
 // APK içinden açılınca (Android WebView) indirme bağlantısı gösterilmez
 if (!/; wv\)/.test(navigator.userAgent) && !window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
   fetch('/download/DustStrike.apk', { method: 'HEAD' }).then((r) => { if (r.ok) document.getElementById('apkLink').classList.remove('hidden'); }).catch(() => {});
+  // Windows uygulaması bağlantısı: bilgisayarda ve Windows uygulamasının kendisi dışında göster
+  if (!IS_TOUCH && !/Electron/.test(navigator.userAgent)) document.getElementById('exeLink').classList.remove('hidden');
 }
 
 // Grafik ayarları
