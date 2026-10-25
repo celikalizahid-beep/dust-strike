@@ -350,6 +350,16 @@ function updateRemotes(dt, now) {
         const f = Math.min(1, (rt - a.t) / Math.max(1, b.t - a.t));
         x = a.x + (b.x - a.x) * f; y = a.y + (b.y - a.y) * f; z = a.z + (b.z - a.z) * f;
         yaw = lerpAngle(a.yaw, b.yaw, f); pitch = a.pitch + (b.pitch - a.pitch) * f; c = a.c + (b.c - a.c) * f;
+        // Ağda kısa gecikme olursa son hızla en fazla 150 ms ileri tahmin et (rakip donmasın)
+        if (rt > b.t) {
+          const span = Math.max(1, b.t - a.t);
+          const vx = (b.x - a.x) / span, vz = (b.z - a.z) / span;
+          if (Math.hypot(vx, vz) < 0.012) {
+            const ex = Math.min(rt - b.t, 150);
+            const nx = b.x + vx * ex, nz = b.z + vz * ex;
+            if (!boxHit(MAP.boxes, nx, b.y, nz, PLAYER_HW, STAND_H - 0.1)) { x = nx; z = nz; }
+          }
+        }
       }
       const moved = Math.hypot(x - r.x, z - r.z);
       const inAir = Math.abs(y - r.y) > 0.01;
