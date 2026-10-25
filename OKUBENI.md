@@ -51,6 +51,36 @@ Menüden mod seçilir; üç mod aynı anda oynanabilir (her biri ayrı oda).
 yeniden doğunca otomatik verilir, doğunca 2 saniye koruma vardır (ateş edince biter). Maç süresi
 `DM_TIME` ortam değişkeniyle (saniye) değiştirilebilir.
 
+## Haritalar
+
+Menüde mod seçtikten sonra harita seçilir (her mod + harita ayrı bir odadır).
+
+| Harita | Tema | Modlar |
+| --- | --- | --- |
+| **de_kum** | Çöl kasabası, 3 koridor | Hepsi |
+| **de_depo** | Endüstriyel depo, raflı ana salon, konteynerler | Hepsi |
+| **de_kar** | Karlı kış üssü, geniş orta avlu, kar yağışı | Hepsi |
+| **dm_arena** | Küçük simetrik arena, neon ışıklar | Takımlı ÖM, Herkes Tek |
+
+## Silah eklentileri
+
+Satın alma menüsünün 5. sütunu (**Eklentiler**). Elindeki silaha takılır (bıçak/bomba elindeyse ana silaha).
+
+| Eklenti | Fiyat | Etki | Silahlar |
+| --- | --- | --- | --- |
+| Susturucu | $400 | Sessiz atış: namlu alevi ve mermi izi görünmez, uzaktan duyulmaz | Tabanca, SMG, tüfek |
+| Kırmızı Nokta | $350 | Sağ tık / NİŞAN: 1.6x yakınlaştırma, daha isabetli | SMG, tüfek |
+| Uzun Şarjör | $300 | %50 daha fazla mermi | Hepsi |
+| Tutamaç | $300 | %30 daha az tepme | SMG, tüfek |
+
+Ölüm maçlarında eklentiler de bedava ve yeniden doğunca silahla birlikte geri gelir.
+
+## Grafik ve performans
+
+Menü (Esc / ☰) → **Grafik kalitesi**: Otomatik (önerilen), Düşük, Orta, Yüksek. Otomatik modda kare hızı
+55'in altına düşerse çözünürlük kademeli düşürülür, gerekirse gölgeler kapatılır (60 FPS hedefi).
+**FPS göster** ile ekranın altında kare hızı görünür.
+
 ## Klasik mod kuralları
 
 - İki takım: **Teröristler (T)** ve **Anti-Terör (CT)**. Her iki takımda en az 1 kişi olunca maç başlar;
@@ -70,13 +100,33 @@ Aynı link telefonda açılınca oyun dokunmatik kontrollere geçer. Telefonu ya
 - Üst sağ: $ (satın al), SOHBET, SKOR, ☰ (menü / takım değiştir)
 - Android'de oyun tam ekran açılır. iPhone'da tam ekran için Safari'de **Paylaş → Ana Ekrana Ekle** yap, oradan aç.
 - iPhone'un yan tarafındaki sessiz düğmesi açıksa oyun sesleri duyulmaz.
+- **Butonları düzenle:** ☰ → "Butonları düzenle". Butonları (joystick dahil) sürükleyerek taşı, seçili butonun
+  ya da tüm butonların boyutunu ayarla, "Bitti" de. Düzen telefonda saklanır; "Sıfırla" ile varsayılana döner.
+- **Jiroskop:** ☰ → "Jiroskop ile nişan al". Telefonu çevirerek nişan alırsın (parmakla bakış da çalışmaya devam eder).
+  Hassasiyet ayarlanabilir; yön ters geliyorsa "Yatayı / Dikeyi ters çevir". iPhone'da ilk açışta hareket izni sorulur.
+
+## Uygulamalar (Android APK ve Windows)
+
+- **Android:** Sitedeki menüde "Android uygulamasını indir (APK)" bağlantısı var. İndirdikten sonra telefonda
+  "bilinmeyen kaynaklardan yükleme" izni gerekir. Uygulama tam ekran ve yatay açılır, canlı sunucuya bağlanır.
+- **Windows:** `DustStrike.exe` (kurulum gerektirmez) GitHub'daki **Releases → latest** sayfasında. İlk açılışta
+  SmartScreen uyarısı çıkarsa "Ek bilgi → Yine de çalıştır". Ayrıca Chrome/Edge'de menüdeki
+  "Bilgisayara uygulama olarak yükle" butonu oyunu Başlat menüsüne uygulama olarak ekler.
+- Uygulamalar GitHub Actions ile derlenir (`.github/workflows/apps.yml`): `apps/` klasörü değişince ya da
+  Actions sekmesinden "Run workflow" ile. İkisi de canlı sunucuyu açtığı için oyun güncellemeleri uygulamalara
+  kendiliğinden gelir; yeniden derlemeye gerek yoktur.
+
+## Yük testi
+
+`node tools/bots.mjs <adres> <bot sayısı> <süre sn> <mod> <harita>` gerçek oyuncu gibi davranan botlar bağlar
+(dolaşır, silah alır, ateş eder) ve her 5 saniyede sunucu durumunu yazar. Sunucu durumu: `<adres>/stats`.
 
 ## Kontroller (bilgisayar)
 
 | Tuş | İşlev |
 | --- | --- |
 | W A S D | Hareket — Shift yürü, C / Ctrl eğil, Boşluk zıpla |
-| Sol tık / Sağ tık | Ateş / dürbün (AWP, Scout) veya bıçak saplama |
+| Sol tık / Sağ tık | Ateş / dürbün (AWP, Scout), kırmızı nokta ile nişan ya da bıçak saplama |
 | 1 2 3 4 5 | Ana silah, tabanca, bıçak, bombalar, C4 — Q: son silah, tekerlek: silah değiştir |
 | R / G | Şarjör değiştir / silahı yere at |
 | B | Satın alma menüsü (raund başında doğuş alanında) |

@@ -1,5 +1,6 @@
 // Tüm sesler WebAudio ile anında sentezleniyor (ses dosyası yok). Uzaktaki sesler 3D konumlu (HRTF).
 let ctx = null, master = null, wet = null, noise = null;
+const lis = { x: 0, y: 0, z: 0 };
 let volume = 0.6;
 
 export function init() {
@@ -50,7 +51,8 @@ function out(pos, vol = 1, reverb = 1) {
   g.gain.value = vol;
   if (pos) {
     const p = ctx.createPanner();
-    p.panningModel = 'HRTF';
+    // HRTF pahalıdır: sadece yakındaki sesler için kullanılır (kalabalık maçlarda performans)
+    p.panningModel = Math.hypot(pos.x - lis.x, pos.y - lis.y, pos.z - lis.z) < 22 ? 'HRTF' : 'equalpower';
     p.distanceModel = 'inverse';
     p.refDistance = 4;
     p.rolloffFactor = 0.9;
@@ -127,6 +129,17 @@ export function gun(name, pos) {
   burst(o, t, p[0][1], 'highpass', p[0][0] * v, 0.7, p[0][2]);
   burst(o, t, p[1][1], 'lowpass', p[1][0] * v, 0.8, p[1][2], 0.003);
   tone(o, t, p[2][2], 'sine', p[2][0] * v, p[2][1], p[2][3], 0.003);
+}
+
+// Susturuculu atış: kısa, boğuk "püf" sesi
+export function gunSilenced(pos) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = out(pos, pos ? 0.7 : 0.55, 0.3);
+  burst(o, t, 0.07, 'bandpass', 1100 + Math.random() * 300, 1.4, 0.7, 0.002);
+  burst(o, t, 0.03, 'highpass', 3500, 1, 0.25);
+  tone(o, t, 0.06, 'sine', 160, 70, 0.3);
+  burst(o, t + 0.04, 0.05, 'bandpass', 2600, 3, 0.15); // mekanizma sesi
 }
 
 export function step(pos, vol = 1) {
@@ -313,6 +326,7 @@ export function chatBlip() {
 export function setListener(pos, fwd, up) {
   if (!ctx) return;
   const l = ctx.listener;
+  lis.x = pos.x; lis.y = pos.y; lis.z = pos.z;
   if (l.positionX) {
     l.positionX.value = pos.x; l.positionY.value = pos.y; l.positionZ.value = pos.z;
     l.forwardX.value = fwd.x; l.forwardY.value = fwd.y; l.forwardZ.value = fwd.z;

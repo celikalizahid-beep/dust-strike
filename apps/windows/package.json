@@ -1,0 +1,23 @@
+{
+  "name": "dust-strike-windows",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DUST STRIKE Windows uygulaması (Electron)",
+  "author": "DUST STRIKE",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable --publish never"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.duststrike.app",
+    "productName": "DUST STRIKE",
+    "files": ["main.cjs", "icon.png"],
+    "win": { "target": "portable", "icon": "icon.png" },
+    "portable": { "artifactName": "DustStrike.exe" }
+  }
+}

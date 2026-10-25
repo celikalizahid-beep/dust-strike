@@ -1,22 +1,41 @@
 // DUST STRIKE istemcisi: render döngüsü, girdi, hareket, silahlar ve ağ.
 import * as THREE from 'three';
-import { buildMap, siteAt, inBuyZone } from '../shared/map.js';
-import { WEAPONS } from '../shared/weapons.js';
+import { buildMap } from '../shared/map.js';
+import { WEAPONS, ATTACHMENTS, canAttach, magSize, attFromCode } from '../shared/weapons.js';
 import { movePlayer, boxHit, raycastWorld, rayAABB, STAND_H, CROUCH_H, STAND_EYE, CROUCH_EYE, JUMP_V, PLAYER_HW } from '../shared/physics.js';
 import { buildWorld } from './world.js';
 import { createPlayerModel, createWeaponModel, Viewmodel, makeNameSprite } from './models.js';
 import * as sfx from './audio.js';
 import { Effects } from './effects.js';
 import { HUD } from './hud.js';
-import { IS_TOUCH, TouchControls, goFullscreen } from './touch.js';
+import { IS_TOUCH, TouchControls, goFullscreen, Gyro } from './touch.js';
 
-const MAP = buildMap();
+let MAP = buildMap('kum');
 // Cihaza göre metinler (telefonda tuş yerine buton adları)
 const TXT = IS_TOUCH
   ? { buyDM: 'Silahlar bedava: $ butonu ile istediğin zaman al', buy: 'Satın almak için $ butonu', plant: 'Bombayı kurmak için KUR butonunu basılı tut', defuse: 'İmha etmek için İMHA butonunu basılı tut', bombNote: 'C4 sende! A veya B bölgesine git, KUR butonunu basılı tut.', next: 'ATEŞ: sonraki oyuncu' }
   : { buyDM: 'Silahlar bedava: B ile istediğin zaman al', buy: 'Satın almak için B', plant: 'Bombayı kurmak için E tuşunu basılı tut', defuse: 'İmha etmek için E tuşunu basılı tut', bombNote: 'C4 sende! 5 tuşu ile seç, A veya B bölgesinde E tuşunu basılı tut.', next: 'sonraki oyuncu için tıkla' };
 const NADE_ORDER = ['he', 'flash', 'smoke'];
 const BASE_FOV = 74;
+const SETTINGS = loadSettings();
+
+// ---------------------------------------------------------------- Grafik kalitesi
+// "Otomatik"te kare hızı 55'in altına düşerse çözünürlük, gerekirse gölgeler düşürülür (60 FPS hedefi)
+const QUALITY = {
+  low: { ratio: 0.75, shadows: false, shadowSize: 1024, env: false, bump: false },
+  medium: { ratio: 1.0, shadows: true, shadowSize: 1024, env: true, bump: false },
+  high: { ratio: 1.5, shadows: true, shadowSize: 2048, env: true, bump: true },
+};
+const qualityLevel = () => (SETTINGS.quality === 'auto' ? (IS_TOUCH ? 'medium' : 'high') : SETTINGS.quality);
+const perf = { frames: 0, t0: 0, scale: 1, goodFor: 0, fps: 60 };
+function worldOpts() {
+  const q = QUALITY[qualityLevel()];
+  return { renderer, shadows: q.shadows, shadowSize: q.shadowSize, env: q.env, bump: q.bump, lowSpec: IS_TOUCH };
+}
+function applyPixelRatio() {
+  const q = QUALITY[qualityLevel()];
+  renderer.setPixelRatio(Math.max(0.5, Math.min(window.devicePixelRatio, q.ratio) * perf.scale));
+}
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -32,7 +51,7 @@ function lerpAngle(a, b, f) {
 
 // ---------------------------------------------------------------- Görüntü
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, IS_TOUCH ? 1.25 : 1.5));
+// pixel oranı kalite sisteminde ayarlanır (applyPixelRatio)
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -45,7 +64,8 @@ const canvas = renderer.domElement;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.05, 600);
 camera.rotation.order = 'YXZ';
-const world = buildWorld(scene, MAP, { shadowSize: IS_TOUCH ? 1024 : 2048 });
+applyPixelRatio();
+let world = buildWorld(scene, MAP, worldOpts());
 const fx = new Effects(scene, MAP.boxes);
 
 const vmScene = new THREE.Scene();
@@ -57,6 +77,46 @@ vmSun.position.set(0.6, 1, 0.8);
 vmScene.add(vmSun);
 const vm = new Viewmodel(vmScene);
 const hud = new HUD(MAP);
+vmScene.environment = world.env ? world.env.texture : null;
+vmScene.environmentIntensity = 0.5;
+
+// Harita değişince eski dünyayı temizleyip yenisini kur
+function loadMap(id, force = false) {
+  if (MAP.id === id && !force) return;
+  world.dispose();
+  MAP = buildMap(id);
+  world = buildWorld(scene, MAP, worldOpts());
+  fx.boxes = MAP.boxes;
+  hud.setMap(MAP);
+  vmScene.environment = world.env ? world.env.texture : null;
+}
+
+function adaptQuality(now) {
+  perf.frames++;
+  if (!perf.t0) perf.t0 = now;
+  const el = now - perf.t0;
+  if (el < 1500) return;
+  perf.fps = perf.frames * 1000 / el;
+  perf.frames = 0;
+  perf.t0 = now;
+  hud.fps(SETTINGS.showFps ? perf.fps : null);
+  if (document.hidden || !S.joined || SETTINGS.quality !== 'auto') return;
+  if (perf.fps < 55) {
+    perf.goodFor = 0;
+    if (perf.scale > 0.6) { perf.scale = Math.max(0.6, perf.scale - 0.1); applyPixelRatio(); }
+    else if (world.sun.castShadow) world.setShadows(false);
+  } else if (perf.fps >= 58) {
+    perf.goodFor += el;
+    if (perf.goodFor > 8000 && perf.scale < 1) { perf.scale = Math.min(1, perf.scale + 0.1); applyPixelRatio(); perf.goodFor = 0; }
+  }
+}
+function setQuality(level) {
+  SETTINGS.quality = level;
+  saveSettings();
+  perf.scale = 1;
+  applyPixelRatio();
+  loadMap(MAP.id, true);
+}
 
 const bombModel = createWeaponModel('bomb');
 bombModel.scale.setScalar(1.5);
@@ -83,7 +143,7 @@ const act = { kind: null, start: 0, dur: 0, tick: 0 };
 const view = {
   deathAt: 0, deathPos: new THREE.Vector3(), deathYaw: 0, deathPitch: 0, specId: 0, shake: 0,
   blindT0: 0, blindDur: 0, blindK: 0, hurt: 0, nextBeep: 0, ledOff: 0, aimCheck: 0, useLabel: null,
-  settings: loadSettings(),
+  settings: SETTINGS,
 };
 let locked = false, chatOpen = false, chatTeam = false, menuOpen = false, pauseOpen = false, scoreShown = false, nadeCid = 0;
 let touch = null;
@@ -99,7 +159,11 @@ const controlsOn = () => (IS_TOUCH ? S.joined && !pauseOpen && !menuOpen : locke
 function loadSettings() {
   let s = {};
   try { s = JSON.parse(localStorage.getItem('dust-settings') || '{}'); } catch { /* yok say */ }
-  return { sens: s.sens ?? 1.6, vol: s.vol ?? 0.6, name: s.name ?? '', mode: s.mode ?? 'classic' };
+  return {
+    sens: s.sens ?? 1.6, vol: s.vol ?? 0.6, name: s.name ?? '', mode: s.mode ?? 'classic', map: s.map ?? 'kum',
+    quality: s.quality ?? 'auto', showFps: s.showFps ?? false,
+    gyro: s.gyro ?? false, gyroSens: s.gyroSens ?? 1.0, gyroInvX: s.gyroInvX ?? false, gyroInvY: s.gyroInvY ?? false,
+  };
 }
 const isDM = () => S.mode !== 'classic';
 // Herkes Tek modunda takım sadece görünüştür: herkes düşmandır
@@ -136,10 +200,11 @@ function onMessage(m) {
   const now = performance.now();
   switch (m.t) {
     case 'welcome': S.myId = m.id; break;
-    case 'rooms': S.rooms = m.rooms; hud.menuRooms(m.rooms, view.settings.mode); break;
+    case 'rooms': S.rooms = m.rooms; refreshMenu(); break;
     case 'room':
       // Başka bir moda geçildi: eski odanın oyuncularını ve efektlerini temizle
       S.mode = m.mode;
+      loadMap(m.map || 'kum');
       for (const id of [...remotes.keys()]) removeRemote(id);
       S.roster.clear();
       fx.clearRound();
@@ -159,6 +224,7 @@ function onMessage(m) {
     case 'state': {
       const prevPhase = S.phase, prevRound = S.round;
       S.mode = m.mode || 'classic';
+      if (m.map && m.map !== MAP.id) loadMap(m.map);
       S.phase = m.phase; S.round = m.round; S.score = m.score;
       S.phaseEnd = m.left ? now + m.left : 0;
       S.buyEnd = now + m.buyLeft;
@@ -220,7 +286,7 @@ function ensureModel(r, team, force = false) {
   r.nameSprite.position.y = 2.1;
   r.model.group.add(r.nameSprite);
   r.model.group.position.set(r.x, r.y, r.z);
-  if (r.w) r.model.setWeapon(r.w);
+  if (r.w) r.model.setWeapon(r.w, attFromCode(r.att));
   scene.add(r.model.group);
 }
 
@@ -246,7 +312,7 @@ function applyRoster(ps) {
 
 function applySnap(ps, now) {
   for (const e of ps) {
-    const [id, x, y, z, yaw, pitch, c, w, a] = e;
+    const [id, x, y, z, yaw, pitch, c, w, a, att = ''] = e;
     if (id === S.myId) continue;
     const r = getRemote(id);
     if (!r.model) {
@@ -266,7 +332,7 @@ function applySnap(ps, now) {
       r.snaps.push({ t: now, x, y, z, yaw, pitch, c });
       if (r.snaps.length > 40) r.snaps.shift();
     }
-    if (w !== r.w) { r.w = w; r.model.setWeapon(w); }
+    if (w !== r.w || att !== r.att) { r.w = w; r.att = att; r.model.setWeapon(w, attFromCode(att)); }
   }
 }
 
@@ -302,7 +368,7 @@ function updateRemotes(dt, now) {
       for (const l of m.legs) { l.position.y = hip; l.scale.y = hip / 0.85; }
       m.aim.rotation.x = pitch;
       m.head.rotation.x = pitch * 0.5;
-      if (r.speed > 4.2 && !inAir) {
+      if (r.speed > 4.2 && !inAir && Math.abs(x - camera.position.x) + Math.abs(z - camera.position.z) < 40) {
         r.stepT -= dt;
         if (r.stepT <= 0) { r.stepT = 0.36; sfx.step(new THREE.Vector3(x, y, z), 1); }
       }
@@ -325,14 +391,14 @@ function updateRemotes(dt, now) {
 // ---------------------------------------------------------------- Sunucu olayları
 function fillAmmo(w) {
   const d = WEAPONS[w];
-  if (d && d.mag) W.ammo[w] = { mag: d.mag, res: d.reserve };
+  if (d && d.mag) W.ammo[w] = { mag: magSize(w, attsOf(w)), res: d.reserve };
 }
 
 function applyYou(m) {
   const prev = S.inv;
   const wasAlive = S.alive;
   S.team = m.team; S.hp = m.hp; S.armor = m.armor; S.helmet = m.helmet; S.kit = m.kit; S.money = m.money;
-  S.inv = { primary: m.primary, secondary: m.secondary, nades: { ...m.nades } };
+  S.inv = { primary: m.primary, secondary: m.secondary, nades: { ...m.nades }, att: m.att || { 1: [], 2: [] } };
   S.alive = m.alive;
   if (m.primary && m.primary !== prev.primary) {
     fillAmmo(m.primary);
@@ -342,9 +408,20 @@ function applyYou(m) {
     fillAmmo(m.secondary);
     if (S.alive && wasAlive && (W.cur === prev.secondary || W.cur === 'knife' || !W.cur)) switchWeapon(m.secondary);
   }
+  // Eklenti değiştiyse: uzun şarjör kapasiteyi doldurur, görünüm yenilenir
+  for (const slot of [1, 2]) {
+    const before = (prev.att && prev.att[slot]) || [], after = S.inv.att[slot] || [];
+    const w = slot === 1 ? m.primary : m.secondary;
+    if (!w || before.join() === after.join() || w !== (slot === 1 ? prev.primary : prev.secondary)) continue;
+    if (after.includes('mag') && !before.includes('mag') && W.ammo[w]) W.ammo[w].mag = magSize(w, after);
+    if (W.cur === w) vm.set(w, S.team, true, after);
+  }
   if (S.alive && W.cur && !owns(W.cur)) switchWeapon(bestWeapon());
   if (hud.buyOpen) hud.refreshBuy(buyCtx());
 }
+
+const attsOf = (w) => { const s = WEAPONS[w]?.slot; return (s === 1 || s === 2) && S.inv.att ? S.inv.att[s] || [] : []; };
+const hasDot = (w) => attsOf(w).includes('dot');
 
 function onSpawn(m) {
   S.sid = m.sid;
@@ -401,13 +478,19 @@ function onRemoteShot(m) {
   const o = new THREE.Vector3(...m.o), e = new THREE.Vector3(...m.e);
   const w = WEAPONS[m.w];
   if (w?.melee) { sfx.knifeSwing(o); if (m.b) sfx.knifeHit(o); return; }
-  sfx.gun(m.w, o);
   const r = remotes.get(m.id);
-  const mz = o.clone();
-  if (r?.model?.weapon && view.specId !== m.id) r.model.weapon.userData.muzzle.getWorldPosition(mz);
-  else mz.y -= 0.15;
-  if (view.specId === m.id && !S.alive) vm.kick(1); else fx.muzzle(mz);
-  if (Math.random() < 0.6) fx.tracer(mz, e);
+  if (m.s) {
+    // Susturuculu atış: kısık ses, namlu alevi ve mermi izi yok
+    if (o.distanceTo(camera.position) < 45) sfx.gunSilenced(o);
+    if (view.specId === m.id && !S.alive) vm.kick(1, false);
+  } else {
+    if (o.distanceTo(camera.position) < 110) sfx.gun(m.w, o);
+    const mz = o.clone();
+    if (r?.model?.weapon && view.specId !== m.id) r.model.weapon.userData.muzzle.getWorldPosition(mz);
+    else mz.y -= 0.15;
+    if (view.specId === m.id && !S.alive) vm.kick(1); else fx.muzzle(mz);
+    if (Math.random() < 0.6) fx.tracer(mz, e);
+  }
   if (m.b) { fx.blood(e); return; }
   const d = e.clone().sub(o);
   const len = d.length();
@@ -525,7 +608,7 @@ function switchWeapon(name, instant = false) {
   const d = WEAPONS[name];
   W.drawEnd = performance.now() + (instant ? 0 : (d.draw || 0.6) * 1000);
   W.nextFire = Math.max(W.nextFire, W.drawEnd);
-  vm.set(name, S.team, instant);
+  vm.set(name, S.team, instant, attsOf(name));
   if (!instant) sfx.deploy();
   if (act.kind === 'plant' && name !== 'bomb') cancelAction();
 }
@@ -562,11 +645,12 @@ function muzzleWorld() {
 function currentSpread(w) {
   if (!w || !w.spread) return 0;
   const sp = Math.hypot(P.vel.x, P.vel.z);
-  let s = w.scope && W.scope > 0 ? w.scopedSpread : w.spread;
+  const ads = W.scope > 0 && !w.scope;
+  let s = w.scope && W.scope > 0 ? w.scopedSpread : ads ? w.spread * 0.45 : w.spread;
   if (!P.onGround) s += w.jumpSpread;
   else if (sp > 0.6) s += w.moveSpread * Math.min(1, sp / 5.5);
   if (P.crouch > 0.5 && P.onGround) s *= 0.7;
-  s += Math.min(W.shots, 12) * w.recoil * 0.35;
+  s += Math.min(W.shots, 12) * w.recoil * 0.35 * (attsOf(W.cur).includes('grip') ? 0.7 : 1);
   return s;
 }
 
@@ -613,17 +697,22 @@ function fireGun(now) {
   } else if (res.wall.hit) fx.impact(end, new THREE.Vector3(...res.wall.normal));
   send({ t: 'shot', w: W.cur, o: arr(eye), e: arr(end), hits: res.hit ? [{ id: res.hit.id, z: res.hit.zone }] : [] });
 
-  sfx.gun(W.cur, null);
-  vm.kick(w.slot === 2 ? 0.8 : 1);
-  const mz = muzzleWorld();
-  fx.pulse(mz, 0xffb060, 18, 0.05);
-  if (Math.random() < (w.auto ? 0.5 : 0.25)) fx.tracer(mz, end);
+  const atts = attsOf(W.cur);
+  const silenced = atts.includes('sil');
+  if (silenced) sfx.gunSilenced(null); else sfx.gun(W.cur, null);
+  vm.kick(w.slot === 2 ? 0.8 : 1, !silenced);
+  if (!silenced) {
+    const mz = muzzleWorld();
+    fx.pulse(mz, 0xffb060, 18, 0.05);
+    if (Math.random() < (w.auto ? 0.5 : 0.25)) fx.tracer(mz, end);
+  }
 
   const k = Math.min(W.shots, 6);
-  P.punchP = Math.min(0.2, P.punchP + w.recoil * (1 + 0.25 * k));
+  const rec = w.recoil * (atts.includes('grip') ? 0.7 : 1) * (W.scope > 0 && !w.scope ? 0.85 : 1);
+  P.punchP = Math.min(0.2, P.punchP + rec * (1 + 0.25 * k));
   if (w.auto && W.shots >= 3) {
     if (Math.random() < 0.3) W.sprayDir *= -1;
-    P.punchY = clamp(P.punchY + W.sprayDir * w.recoil * 0.5, -0.08, 0.08);
+    P.punchY = clamp(P.punchY + W.sprayDir * rec * 0.5, -0.08, 0.08);
   }
   W.shots++;
   if (w.scope && W.scope > 0) { W.scopeResume = W.scope; W.scope = 0; }
@@ -678,7 +767,7 @@ function throwNade(alt, now) {
 
 function startReload() {
   const w = WEAPONS[W.cur], a = W.ammo[W.cur];
-  if (!S.alive || !w || !a || !w.mag || W.reloadEnd || a.mag >= w.mag || a.res <= 0) return;
+  if (!S.alive || !w || !a || !w.mag || W.reloadEnd || a.mag >= magSize(W.cur, attsOf(W.cur)) || a.res <= 0) return;
   W.reloadEnd = performance.now() + w.reload * 1000;
   W.scope = 0; W.scopeResume = 0;
   vm.reload(w.reload);
@@ -705,7 +794,7 @@ function updateWeapon(dt, now) {
   if (!w) return;
   if (W.reloadEnd && now >= W.reloadEnd) {
     const a = W.ammo[W.cur];
-    const take = Math.min(w.mag - a.mag, a.res);
+    const take = Math.min(magSize(W.cur, attsOf(W.cur)) - a.mag, a.res);
     a.mag += take; a.res -= take;
     W.reloadEnd = 0;
   }
@@ -726,8 +815,8 @@ function updateWeapon(dt, now) {
       if (w.auto ? input.mouseL : input.lPressed) fireGun(now);
     }
   }
-  if (input.rPressed && w.scope && controlsOn() && !W.reloadEnd && now >= W.drawEnd) {
-    W.scope = (W.scope + 1) % 3;
+  if (input.rPressed && (w.scope || hasDot(W.cur)) && controlsOn() && !W.reloadEnd && now >= W.drawEnd) {
+    W.scope = w.scope ? (W.scope + 1) % 3 : (W.scope ? 0 : 1);
     W.scopeResume = 0;
     sfx.dry();
   }
@@ -743,7 +832,7 @@ function cancelAction() {
 
 function updateAction(now) {
   const b = S.bomb;
-  const canPlant = S.phase === 'live' && hasBomb() && !!siteAt(P.pos.x, P.pos.z) && P.onGround;
+  const canPlant = S.phase === 'live' && hasBomb() && !!MAP.siteAt(P.pos.x, P.pos.z) && P.onGround;
   const nearBomb = S.team === 'CT' && S.phase === 'live' && b && b.state === 'planted' &&
     Math.hypot(P.pos.x - b.pos[0], P.pos.z - b.pos[2]) < 1.9 && Math.abs(P.pos.y - b.pos[1]) < 1.4;
   const holdE = !!input.keys.KeyE && !chatOpen;
@@ -823,7 +912,7 @@ function updateLocal(dt, now) {
 
   const wdef = WEAPONS[W.cur] || WEAPONS.knife;
   let maxSp = wdef.speed;
-  if (W.scope > 0) maxSp *= 0.72;
+  if (W.scope > 0) maxSp *= wdef.scope ? 0.72 : 0.8;
   if (k.ShiftLeft || k.ShiftRight) maxSp *= 0.52;
   if (P.crouch > 0.5) maxSp *= 0.36;
   // Joystick yarım itilirse yavaş yürür (adım sesi çıkmaz), klavyede her zaman tam hız
@@ -873,7 +962,7 @@ function updateCamera(dt, now) {
   if (S.joined && S.alive) {
     camera.position.set(P.pos.x, P.pos.y + eyeHeight(), P.pos.z);
     camera.rotation.set(P.pitch + P.punchP, P.yaw + P.punchY, 0);
-    vmVisible = W.scope === 0;
+    vmVisible = W.scope === 0 || !WEAPONS[W.cur]?.scope;
   } else if (S.joined && (S.team === 'T' || S.team === 'CT')) {
     const since = now - view.deathAt;
     if (view.deathAt && since < 2600) {
@@ -887,7 +976,7 @@ function updateCamera(dt, now) {
         camera.position.set(specR.x, specR.y + STAND_EYE - (STAND_EYE - CROUCH_EYE) * specR.crouch, specR.z);
         camera.rotation.set(specR.pitch, specR.yaw, 0);
         vmVisible = !!specR.w;
-        if (vm.name !== specR.w || vm.team !== specR.team) vm.set(specR.w, specR.team, true);
+        vm.set(specR.w, specR.team, true, attFromCode(specR.att));
         hud.spec(`İzleniyor: <b>${esc(specR.name)}</b> · ${TXT.next}`);
       } else {
         const t = now * 0.00004;
@@ -915,12 +1004,20 @@ function canBuyHere(now) {
   if (!S.alive) return false;
   if (isDM() || S.phase === 'warmup') return true;
   if (S.phase !== 'freeze' && S.phase !== 'live') return false;
-  return now < S.buyEnd && inBuyZone(S.team, P.pos.x, P.pos.z);
+  return now < S.buyEnd && MAP.inBuyZone(S.team, P.pos.x, P.pos.z);
+}
+// Eklentiler elde tutulan silaha (bıçak/bomba ise ana silaha) takılır
+function attTarget() {
+  const s = WEAPONS[W.cur]?.slot;
+  const slot = s === 1 || s === 2 ? s : S.inv.primary ? 1 : 2;
+  const weapon = slot === 1 ? S.inv.primary : S.inv.secondary;
+  return { attSlot: slot, attWeapon: weapon, attHave: (S.inv.att && S.inv.att[slot]) || [] };
 }
 function buyCtx() {
   return {
     team: S.team, money: S.money, inv: S.inv, armor: S.armor, helmet: S.helmet, kit: S.kit,
-    dm: isDM(), ffa: S.mode === 'ffa', onBuy: (item) => send({ t: 'buy', item }),
+    dm: isDM(), ffa: S.mode === 'ffa', ...attTarget(),
+    onBuy: (item) => send({ t: 'buy', item, slot: attTarget().attSlot }),
   };
 }
 function openBuy() {
@@ -975,8 +1072,10 @@ function updateHUD(now, dt) {
   } else { hud.setAmmo('', null); hud.setWeapon(''); }
   hud.icons({ buy: canBuyHere(now), bomb: hasBomb(), kit: S.alive && S.kit, helmet: S.alive && S.helmet });
   const spread = S.alive ? currentSpread(w) : 0;
+  const adsNow = S.alive && W.scope > 0 && w && !w.scope;
   hud.crosshair(4 + spread * 420, S.alive ? W.scope === 0 && !(w && w.scope) : !!specR);
-  hud.scope(S.alive && W.scope > 0);
+  hud.redDot(adsNow);
+  hud.scope(S.alive && W.scope > 0 && !!w?.scope);
   view.hurt = Math.max(0, view.hurt - dt * 1.5);
   hud.hurt(view.hurt);
   hud.flash(blindLevel(now));
@@ -1143,17 +1242,17 @@ for (const btn of document.querySelectorAll('[data-team]')) {
     sfx.setVolume(view.settings.vol);
     if (!ws || ws.readyState !== 1) { hud.menuStatus('Sunucuya bağlı değil, bekle…'); return; }
     const team = btn.dataset.team;
-    const mode = view.settings.mode;
+    const mode = view.settings.mode, map = view.settings.map;
     view.settings.name = nameInput.value.trim().slice(0, 16);
     saveSettings();
-    if (!S.joined || mode !== S.mode) send({ t: 'join', name: view.settings.name, mode, team });
+    if (!S.joined || mode !== S.mode || map !== MAP.id) send({ t: 'join', name: view.settings.name, mode, map, team });
     else send({ t: 'team', team });
     S.joined = true;
     menuOpen = false;
     hud.showMenu(false);
     hud.setVisible(true);
     document.body.classList.add('playing');
-    if (touch) { touch.setVisible(true); goFullscreen(); }
+    if (touch) { touch.setVisible(true); goFullscreen(); if (SETTINGS.gyro && !gyro.enabled) gyro.enable(); }
     requestLock();
   });
 }
@@ -1161,17 +1260,21 @@ for (const b of document.querySelectorAll('.mode')) {
   b.addEventListener('click', () => {
     view.settings.mode = b.dataset.mode;
     saveSettings();
-    hud.menuRooms(S.rooms, view.settings.mode);
+    refreshMenu();
   });
 }
-hud.menuRooms(null, view.settings.mode);
+function refreshMenu() {
+  SETTINGS.map = hud.menuRooms(S.rooms, SETTINGS.mode, SETTINGS.map, (id) => { SETTINGS.map = id; saveSettings(); refreshMenu(); });
+}
+refreshMenu();
 
 function openTeamMenu() {
   menuOpen = true;
   setPause(false);
   if (touch) touch.releaseAll();
   view.settings.mode = S.mode;
-  hud.menuRooms(S.rooms, S.mode);
+  SETTINGS.map = MAP.id;
+  refreshMenu();
   hud.showMenu(true);
   if (document.pointerLockElement) document.exitPointerLock();
 }
@@ -1197,6 +1300,73 @@ document.getElementById('resumeBtn').addEventListener('click', () => {
 });
 document.getElementById('teamBtn').addEventListener('click', openTeamMenu);
 document.getElementById('buyClose').addEventListener('click', closeBuy);
+
+// Uygulama olarak yükleme (Chrome/Edge: masaüstü uygulaması) ve Android APK bağlantısı
+let installEvt = null;
+const installBtn = document.getElementById('installBtn');
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; installBtn.classList.remove('hidden'); });
+window.addEventListener('appinstalled', () => installBtn.classList.add('hidden'));
+installBtn.addEventListener('click', async () => {
+  if (!installEvt) return;
+  installEvt.prompt();
+  await installEvt.userChoice.catch(() => {});
+  installEvt = null;
+  installBtn.classList.add('hidden');
+});
+// APK içinden açılınca (Android WebView) indirme bağlantısı gösterilmez
+if (!/; wv\)/.test(navigator.userAgent) && !window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
+  fetch('/download/DustStrike.apk', { method: 'HEAD' }).then((r) => { if (r.ok) document.getElementById('apkLink').classList.remove('hidden'); }).catch(() => {});
+}
+
+// Grafik ayarları
+const qualityEl = document.getElementById('quality'), fpsEl = document.getElementById('showFps');
+qualityEl.value = SETTINGS.quality;
+fpsEl.checked = SETTINGS.showFps;
+qualityEl.addEventListener('change', () => setQuality(qualityEl.value));
+fpsEl.addEventListener('change', () => { SETTINGS.showFps = fpsEl.checked; saveSettings(); hud.fps(SETTINGS.showFps ? perf.fps : null); });
+
+// Jiroskop: telefonu çevirerek nişan alma (Android ve iOS)
+const gyro = new Gyro((dYaw, dPitch) => {
+  if (!S.alive || pauseOpen || menuOpen || hud.buyOpen || chatOpen) return;
+  const k = SETTINGS.gyroSens * (camera.fov / BASE_FOV);
+  P.yaw += dYaw * k * (SETTINGS.gyroInvX ? -1 : 1);
+  P.pitch = clamp(P.pitch + dPitch * k * (SETTINGS.gyroInvY ? -1 : 1), -1.55, 1.55);
+});
+const gyroEl = document.getElementById('gyro'), gyroSensEl = document.getElementById('gyroSens');
+const gyroNote = (t) => { document.getElementById('gyroNote').textContent = t; };
+gyroEl.checked = SETTINGS.gyro;
+gyroSensEl.value = SETTINGS.gyroSens;
+document.getElementById('gyroSensVal').textContent = Number(SETTINGS.gyroSens).toFixed(1);
+for (const id of ['gyroInvX', 'gyroInvY']) {
+  const el = document.getElementById(id);
+  el.checked = SETTINGS[id];
+  el.addEventListener('change', () => { SETTINGS[id] = el.checked; saveSettings(); });
+}
+gyroSensEl.addEventListener('input', () => {
+  SETTINGS.gyroSens = Number(gyroSensEl.value);
+  document.getElementById('gyroSensVal').textContent = SETTINGS.gyroSens.toFixed(1);
+  saveSettings();
+});
+gyroEl.addEventListener('change', async () => {
+  if (gyroEl.checked) {
+    const res = await gyro.enable();
+    if (res !== 'ok') {
+      gyroEl.checked = false;
+      gyroNote(res === 'denied' ? 'Hareket sensörü izni verilmedi.' : 'Bu cihazda jiroskop bulunamadı.');
+    } else gyroNote('Açık: telefonu çevirerek nişan al. Ters geliyorsa aşağıdan çevir.');
+  } else { gyro.disable(); gyroNote(''); }
+  SETTINGS.gyro = gyroEl.checked;
+  saveSettings();
+});
+
+// Buton düzenleyici
+document.getElementById('editBtns').addEventListener('click', () => {
+  if (!touch) return;
+  setPause(false);
+  pauseOpen = true; // düzenlerken oyun kontrolleri kapalı kalsın
+  touch.startEdit();
+  touch.onEditDone = () => setPause(true);
+});
 
 // ---------------------------------------------------------------- Dokunmatik (Android / iOS)
 function touchPress(act, down) {
@@ -1247,7 +1417,7 @@ function updateTouchUI(now) {
   if (!touch) return;
   const w = WEAPONS[W.cur];
   let alt = null;
-  if (S.alive && w) alt = w.scope ? 'DÜRBÜN' : w.melee ? 'SAPLA' : w.nade ? 'YAKIN AT' : null;
+  if (S.alive && w) alt = w.scope ? 'DÜRBÜN' : hasDot(W.cur) ? 'NİŞAN' : w.melee ? 'SAPLA' : w.nade ? 'YAKIN AT' : null;
   touch.update({ alive: S.alive, alt, use: S.alive ? view.useLabel : null, buy: canBuyHere(now), crouch: !!input.keys.KeyC });
 }
 
@@ -1285,11 +1455,13 @@ function frame(now) {
   const vmVisible = updateCamera(dt, now);
 
   const w = WEAPONS[W.cur];
-  const fov = S.alive && W.scope > 0 && w?.zoom ? w.zoom[W.scope - 1] : BASE_FOV;
+  const fov = S.alive && W.scope > 0 ? (w?.zoom ? w.zoom[W.scope - 1] : 46) : BASE_FOV;
+  vm.ads = S.alive && W.scope > 0 && !w?.scope;
   if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   const speed = S.alive ? Math.hypot(P.vel.x, P.vel.z) : specR ? specR.speed : 0;
   vm.update(dt, speed, S.alive ? P.onGround : true, vmVisible);
-  world.update(camera);
+  world.update(camera, dt);
+  adaptQuality(now);
 
   tmpF.set(0, 0, -1).applyQuaternion(camera.quaternion);
   tmpUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
@@ -1311,4 +1483,4 @@ connect();
 requestAnimationFrame(frame);
 
 // Hata ayıklama için konsoldan erişim
-window.__dust = { S, P, W, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer };
+window.__dust = { S, P, W, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, get world() { return world; } };

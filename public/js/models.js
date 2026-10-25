@@ -27,6 +27,8 @@ function cyl(r, len, m, x, y, z) {
   mesh.position.set(x, y, z);
   return mesh;
 }
+// Şarjör parçalarını işaretler (uzun şarjör eklentisi bunları büyütür)
+function mag(m) { m.userData.mag = true; return m; }
 function limb(from, to, w, m) {
   const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
   const mesh = new THREE.Mesh(boxGeo(w, w, a.distanceTo(b)), m);
@@ -45,7 +47,7 @@ const COL = {
 };
 
 // Silah modelleri: kabza (sağ el) orijinde, namlu -Z yönünde
-export function createWeaponModel(name) {
+export function createWeaponModel(name, atts = [], opts = {}) {
   const g = new THREE.Group();
   const muzzle = new THREE.Object3D();
   g.add(muzzle);
@@ -63,7 +65,7 @@ export function createWeaponModel(name) {
         box(0.012, 0.05, 0.012, metal, 0, 0.1, -0.72),
         box(0.05, 0.1, 0.3, wood, 0, 0.02, 0.22, 0.12),
         box(0.04, 0.11, 0.05, wood, 0, -0.04, 0.02, 0.35),
-        box(0.045, 0.18, 0.07, name === 'ak47' ? COL.gun : COL.gun2, 0, -0.07, -0.17, -0.35));
+        mag(box(0.045, 0.18, 0.07, name === 'ak47' ? COL.gun : COL.gun2, 0, -0.07, -0.17, -0.35)));
       muzzle.position.set(0, 0.062, -0.76);
       left = [0, 0.0, -0.4];
       break;
@@ -77,7 +79,7 @@ export function createWeaponModel(name) {
         cyl(0.022, 0.2, COL.black, 0, 0.05, -0.76),
         box(0.05, 0.09, 0.24, COL.black, 0, 0.03, 0.22),
         box(0.04, 0.11, 0.05, COL.black, 0, -0.04, 0.02, 0.3),
-        box(0.045, 0.16, 0.065, COL.gun2, 0, -0.07, -0.15, -0.15));
+        mag(box(0.045, 0.16, 0.065, COL.gun2, 0, -0.07, -0.15, -0.15)));
       muzzle.position.set(0, 0.05, -0.87);
       left = [0, 0.0, -0.36];
       break;
@@ -87,7 +89,7 @@ export function createWeaponModel(name) {
         box(0.025, 0.06, 0.4, COL.black, 0, 0.12, -0.2),
         box(0.024, 0.024, 0.14, COL.gun, 0, 0.05, -0.53),
         box(0.04, 0.11, 0.05, COL.black, 0, -0.05, -0.08, 0.3),
-        box(0.045, 0.14, 0.06, COL.gun2, 0, -0.06, 0.06, -0.1));
+        mag(box(0.045, 0.14, 0.06, COL.gun2, 0, -0.06, 0.06, -0.1)));
       muzzle.position.set(0, 0.05, -0.61);
       left = [0, -0.02, -0.33];
       break;
@@ -98,14 +100,14 @@ export function createWeaponModel(name) {
         add(box(0.055, 0.08, 0.3, COL.black, 0, 0.05, -0.08),
           box(0.06, 0.065, 0.14, COL.gun2, 0, 0.04, -0.3),
           box(0.022, 0.022, 0.08, COL.black, 0, 0.05, -0.41),
-          box(0.035, 0.16, 0.05, COL.gun, 0, -0.07, -0.16, -0.25),
+          mag(box(0.035, 0.16, 0.05, COL.gun, 0, -0.07, -0.16, -0.25)),
           box(0.04, 0.05, 0.2, COL.black, 0, 0.04, 0.17),
           box(0.04, 0.1, 0.05, COL.black, 0, -0.04, 0.02, 0.3));
         muzzle.position.set(0, 0.05, -0.46);
         left = [0, 0.0, -0.3];
       } else {
         add(box(0.07, 0.1, 0.45, COL.gun2, 0, 0.03, -0.12),
-          box(0.05, 0.03, 0.35, COL.black, 0, 0.095, -0.15),
+          mag(box(0.05, 0.03, 0.35, COL.black, 0, 0.095, -0.15)),
           box(0.022, 0.022, 0.06, COL.black, 0, 0.04, -0.37),
           box(0.04, 0.09, 0.05, COL.gun2, 0, -0.04, -0.02, 0.2));
         muzzle.position.set(0, 0.04, -0.41);
@@ -124,7 +126,7 @@ export function createWeaponModel(name) {
         box(0.02, 0.04, 0.02, COL.black, 0, 0.09, 0.0),
         box(0.06, 0.13, 0.3, body, 0, 0.0, 0.3),
         box(0.04, 0.1, 0.05, body, 0, -0.04, 0.03, 0.3),
-        box(0.05, 0.07, 0.08, COL.gun, 0, -0.03, -0.14),
+        mag(box(0.05, 0.07, 0.08, COL.gun, 0, -0.03, -0.14)),
         box(0.07, 0.015, 0.015, COL.silver, 0.04, 0.06, 0.06));
       muzzle.position.set(0, 0.055, name === 'awp' ? -0.9 : -0.82);
       left = [0, -0.01, -0.38];
@@ -179,8 +181,74 @@ export function createWeaponModel(name) {
       add(box(0.05, 0.08, 0.4, COL.gun, 0, 0.04, -0.15));
       muzzle.position.set(0, 0.04, -0.36);
   }
-  g.userData = { muzzle, left: left ? new THREE.Vector3(...left) : null, kind, name };
+  const leftV = left ? new THREE.Vector3(...left) : null;
+  applyAttachments(g, name, kind, atts, muzzle, leftV);
+  // Birinci şahısta dipçik kameraya çok yakın kalıp ekranı kapatıyor; çıkar
+  if (opts.fp && kind === 'rifle') for (const c of [...g.children]) if (c.isMesh && c.position.z > 0.12) g.remove(c);
+  mergeChildren(g);
+  g.userData = { muzzle, left: leftV, kind, name };
   return g;
+}
+
+// ---------------------------------------------------------------- Eklentiler
+const RAIL = { ak47: 0.095, galil: 0.095, m4a1: 0.135, famas: 0.155, mp5: 0.095, p90: 0.115 };
+const ATT_MAT = mat(0x1c1d1f, 0.45, 0.35);
+function applyAttachments(g, name, kind, atts, muzzle, left) {
+  if (!atts || !atts.length) return;
+  if (atts.includes('sil')) {
+    const pistol = kind === 'pistol';
+    const r = pistol ? 0.017 : 0.024, len = pistol ? 0.12 : 0.2;
+    g.add(cyl(r, len, ATT_MAT, muzzle.position.x, muzzle.position.y, muzzle.position.z - len / 2 + 0.01));
+    muzzle.position.z -= len;
+  }
+  if (atts.includes('dot') && RAIL[name] !== undefined) {
+    const y = RAIL[name];
+    g.add(box(0.03, 0.016, 0.07, ATT_MAT, 0, y + 0.008, -0.1));      // ray tabanı
+    g.add(box(0.036, 0.006, 0.012, ATT_MAT, 0, y + 0.05, -0.12));    // çerçeve üst
+    g.add(box(0.006, 0.034, 0.012, ATT_MAT, -0.015, y + 0.033, -0.12));
+    g.add(box(0.006, 0.034, 0.012, ATT_MAT, 0.015, y + 0.033, -0.12));
+  }
+  if (atts.includes('mag')) {
+    const mags = g.children.filter((c) => c.userData.mag);
+    for (const m of mags) { m.scale.y = 1.55; m.position.y -= 0.035; }
+    if (!mags.length) g.add(box(0.03, 0.045, 0.05, COL.black, 0, -0.105, 0.015, 0.22)); // tabanca: uzatılmış şarjör tabanı
+  }
+  if (atts.includes('grip') && left) g.add(box(0.03, 0.085, 0.035, ATT_MAT, 0, left.y - 0.065, left.z + 0.02));
+}
+
+// ---------------------------------------------------------------- Mesh birleştirme
+// Bir grubun doğrudan çocuk mesh'lerini köşe renkli tek bir mesh'e birleştirir: çizim çağrısı sayısı düşer
+const MERGED_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.68, metalness: 0.12 });
+function mergeChildren(group) {
+  const meshes = group.children.filter((c) => c.isMesh && !c.userData.keep && c.material.isMeshStandardMaterial);
+  if (meshes.length < 2) return;
+  const pos = [], nor = [], col = [], idx = [];
+  let base = 0;
+  for (const m of meshes) {
+    m.updateMatrix();
+    const geo = m.geometry.clone().applyMatrix4(m.matrix);
+    const p = geo.attributes.position, n = geo.attributes.normal;
+    const c = m.material.color;
+    for (let i = 0; i < p.count; i++) {
+      pos.push(p.getX(i), p.getY(i), p.getZ(i));
+      nor.push(n.getX(i), n.getY(i), n.getZ(i));
+      col.push(c.r, c.g, c.b);
+    }
+    if (geo.index) for (let i = 0; i < geo.index.count; i++) idx.push(geo.index.getX(i) + base);
+    else for (let i = 0; i < p.count; i++) idx.push(i + base);
+    base += p.count;
+    geo.dispose();
+    group.remove(m);
+  }
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  merged.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  merged.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  merged.setIndex(idx);
+  merged.computeBoundingSphere();
+  const mesh = new THREE.Mesh(merged, MERGED_MAT);
+  mesh.userData.merged = true;
+  group.add(mesh);
 }
 
 function createArms(kind, team, left) {
@@ -191,6 +259,7 @@ function createArms(kind, team, left) {
     g.add(box(0.08, 0.06, 0.1, glove, -0.14, 0.0, 0.0), box(0.08, 0.06, 0.1, glove, 0.14, 0.0, 0.0));
     g.add(limb([-0.14, -0.01, 0.04], [-0.24, -0.2, 0.35], 0.09, sleeve));
     g.add(limb([0.14, -0.01, 0.04], [0.24, -0.2, 0.35], 0.09, sleeve));
+    mergeChildren(g);
     return g;
   }
   g.add(box(0.07, 0.07, 0.1, glove, 0, -0.035, 0.03));
@@ -202,6 +271,7 @@ function createArms(kind, team, left) {
     g.add(box(0.06, 0.06, 0.09, glove, -0.035, -0.05, 0.04));
     g.add(limb([-0.04, -0.06, 0.07], [-0.17, -0.25, 0.4], 0.085, sleeve));
   }
+  mergeChildren(g);
   return g;
 }
 
@@ -246,21 +316,22 @@ export class Viewmodel {
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: FLASH_TEX, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
     this.flash.visible = false;
     this.flashT = 0;
+    this.ads = false; this.adsT = 0; this.rail = null;
   }
 
-  set(name, team, instant = false) {
-    if (this.name === name && this.team === team && this.model) { if (!instant) this.drawT = 0; return; }
+  set(name, team, instant = false, atts = []) {
+    const key = (atts || []).join(',');
+    if (this.name === name && this.team === team && this.attKey === key && this.model) { if (!instant) this.drawT = 0; return; }
     if (this.model) this.root.remove(this.model);
-    this.name = name; this.team = team;
+    this.name = name; this.team = team; this.attKey = key;
     this.model = null;
     if (!name) return;
     const g = new THREE.Group();
-    const w = createWeaponModel(name);
-    // Dipçik kameraya çok yakın kalıp ekranı kapatıyor; birinci şahısta gizle
-    if (w.userData.kind === 'rifle') for (const c of w.children) if (c.position.z > 0.12) c.visible = false;
+    const w = createWeaponModel(name, atts, { fp: true });
     g.add(w);
     g.add(createArms(w.userData.kind, team, w.userData.left));
     this.kind = w.userData.kind;
+    this.rail = atts.includes('dot') && RAIL[name] !== undefined ? RAIL[name] : null;
     w.userData.muzzle.add(this.flash);
     this.model = g;
     this.root.add(g);
@@ -268,9 +339,9 @@ export class Viewmodel {
     this.reloadT = -1; this.swingT = -1; this.throwT = -1;
   }
 
-  kick(amount = 1) {
+  kick(amount = 1, flash = true) {
     this.kickV = Math.min(1.6, this.kickV + amount);
-    if (this.kind === 'rifle' || this.kind === 'pistol') {
+    if (flash && (this.kind === 'rifle' || this.kind === 'pistol')) {
       this.flash.visible = true;
       this.flashT = 0.045;
       this.flash.material.rotation = Math.random() * Math.PI;
@@ -291,7 +362,8 @@ export class Viewmodel {
     const pose = VM_POSE[this.kind] || VM_POSE.rifle;
     let [x, y, z] = pose.pos;
     let [rx, ry, rz] = pose.rot;
-    const sp = onGround ? Math.min(1, speed / 6) : 0;
+    this.adsT += ((this.ads && this.rail !== null ? 1 : 0) - this.adsT) * Math.min(1, dt * 12);
+    const sp = (onGround ? Math.min(1, speed / 6) : 0) * (1 - this.adsT * 0.8);
     this.bobT += dt * (2 + speed * 1.5);
     x += Math.sin(this.bobT) * 0.013 * sp;
     y -= Math.abs(Math.cos(this.bobT)) * 0.012 * sp;
@@ -324,6 +396,12 @@ export class Viewmodel {
       this.throwT += dt * 2.6;
       if (this.throwT >= 1) this.throwT = -1;
       else { const k = Math.sin(this.throwT * Math.PI); y += k * 0.08; z -= k * 0.22; rx += k * 1.2; }
+    }
+    if (this.adsT > 0.002) {
+      // Nişan alırken kırmızı noktanın çerçevesi ekran merkezine hizalanır
+      const a = this.adsT, ty = -(this.rail + 0.033);
+      x += (0 - x) * a; y += (ty - y) * a; z += (-0.37 - z) * a;
+      rx *= 1 - a; ry *= 1 - a; rz *= 1 - a;
     }
     this.model.position.set(x, y, z);
     this.model.rotation.set(rx, ry, rz);
@@ -399,15 +477,17 @@ export function createPlayerModel(team) {
   const weaponSlot = new THREE.Group();
   weaponSlot.position.set(0.06, -0.1, -0.36);
   aim.add(weaponSlot);
+  // Parçaları birleştir: oyuncu başına ~5 çizim çağrısı (32 kişilik odada önemli)
+  for (const part of [...legs, upper, head, aim]) mergeChildren(part);
   group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
 
   const model = {
     group, legs, upper, aim, head, weaponSlot, weapon: null,
-    setWeapon(name) {
+    setWeapon(name, atts = []) {
       if (model.weapon) weaponSlot.remove(model.weapon);
       model.weapon = null;
       if (!name) return;
-      const w = createWeaponModel(name);
+      const w = createWeaponModel(name, atts);
       w.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       if (w.userData.kind === 'bomb') w.position.set(-0.05, 0, 0.05);
       weaponSlot.add(w);

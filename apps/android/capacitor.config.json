@@ -1,0 +1,12 @@
+{
+  "appId": "com.duststrike.app",
+  "appName": "DUST STRIKE",
+  "webDir": "www",
+  "server": {
+    "url": "https://dust-strike-jqkv.onrender.com",
+    "cleartext": false
+  },
+  "android": {
+    "backgroundColor": "#000000"
+  }
+}

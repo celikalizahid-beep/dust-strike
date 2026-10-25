@@ -10,6 +10,7 @@
 <meta name="theme-color" content="#000000">
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <title>DUST STRIKE</title>
 <style>
   :root {
@@ -28,6 +29,7 @@
   /* ---------- HUD ---------- */
   #hud { position: fixed; inset: 0; pointer-events: none; text-shadow: 0 0 4px rgba(0,0,0,.8); }
   #radar { position: absolute; left: 14px; top: 14px; width: 190px; height: 190px; }
+  #fps { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); font: 11px Consolas, monospace; color: #9f9; opacity: .8; }
   #topbar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 6px; font-weight: bold; }
   #topbar .sc { min-width: 64px; padding: 4px 10px; background: rgba(0,0,0,.45); border-radius: 4px; text-align: center; font-size: 22px; }
   #topbar .sc small { display: block; font-size: 10px; letter-spacing: 1px; opacity: .8; }
@@ -114,9 +116,19 @@
   .mode small { color: var(--hud); font-size: 11px; }
   .mode.sel { border-color: var(--hud); background: rgba(255,178,40,.12); box-shadow: inset 0 0 0 1px var(--hud); }
   #topbar.ffa .t, #topbar.ffa .ct { color: #fff; }
+  .maps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .mapc { padding: 6px; background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.15); color: #ddd; text-align: left; }
+  .mapc img { display: block; width: 100%; aspect-ratio: 6 / 5; object-fit: contain; background: #16130f; border-radius: 3px; image-rendering: pixelated; }
+  .mapc b { display: block; font-size: 12px; color: #fff; margin-top: 5px; }
+  .mapc span { display: block; font-size: 10px; color: #aaa; margin: 2px 0; }
+  .mapc small { color: var(--hud); font-size: 10px; }
+  .mapc.sel { border-color: var(--hud); background: rgba(255,178,40,.12); box-shadow: inset 0 0 0 1px var(--hud); }
   .secondary, #resumeBtn { width: 100%; margin-top: 12px; padding: 10px; background: rgba(255,178,40,.12); color: var(--hud); border: 1px solid var(--hud-dim); }
   #resumeBtn { background: var(--hud); color: #1a1408; font-weight: bold; border: 0; }
   #menuStatus { margin-top: 14px; font-size: 12px; color: #aaa; text-align: center; }
+  .dl { display: flex; gap: 8px; margin-top: 10px; }
+  .dlbtn { flex: 1; padding: 9px; text-align: center; font-size: 12px; color: #9fd8ff; background: rgba(60,140,255,.12); border: 1px solid rgba(120,180,255,.45); border-radius: 4px; text-decoration: none; cursor: pointer; font-family: inherit; }
+  .dlbtn.hidden { display: none; }
   .controls { margin-top: 18px; font-size: 12px; color: #aaa; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
   .controls b { color: var(--hud); font-weight: normal; font-family: Consolas, monospace; }
 
@@ -128,8 +140,9 @@
   #scoreboard tr.dead td { opacity: .45; }
   #scoreboard .hdr { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0; font-weight: bold; font-size: 16px; }
 
-  #buymenu .panel { width: 860px; }
-  #buyCols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  #buymenu .panel { width: 1040px; }
+  #buyCols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  #reddot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #ff2a1a; box-shadow: 0 0 6px #ff2a1a, 0 0 2px #fff; }
   .bcol { border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
   .bcol.active { border-color: var(--hud); background: rgba(255,178,40,.06); }
   .bcol h3 { margin: 0 0 8px; font-size: 13px; color: var(--hud); }
@@ -173,6 +186,25 @@
   .joyBase.active { opacity: 1; }
   .joyKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
     background: rgba(255,190,90,.45); border: 2px solid rgba(255,225,170,.75); }
+  #touch.editing { background: rgba(0,0,0,.35); }
+  #touch.editing .tbtn, #touch.editing .joyBase { display: flex !important; pointer-events: auto; opacity: 1; outline: 1px dashed rgba(255,255,255,.4); }
+  #touch.editing .tbtn.sel, #touch.editing .joyBase.sel { outline: 2px solid #6dff6d; background: rgba(109,255,109,.2); }
+  #touchEdit { position: fixed; left: 50%; top: 6px; transform: translateX(-50%); z-index: 30; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; width: 440px; max-width: 64vw;
+    background: var(--panel); border: 1px solid var(--hud-dim); border-radius: 6px; padding: 12px 14px; font-size: 12px; color: #ddd; }
+  #touchEdit b { color: var(--hud); font-size: 13px; }
+  #touchEdit > span { grid-column: 1 / -1; font-size: 11px; }
+  #touchEdit label { font-size: 11px; }
+  #touchEdit label { margin: 2px 0; }
+  #touchEdit button { padding: 6px; margin: 0; }
+  #teDone { background: var(--hud); color: #1a1408; font-weight: bold; border: 0; }
+  #touchEdit.hidden { display: none; }
+  .row2 { display: flex; gap: 12px; align-items: flex-end; }
+  .row2 > * { flex: 1; }
+  label.chk { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  select { width: 100%; margin-top: 6px; padding: 8px; background: #0d0c0a; color: #fff; border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+  .touchset { display: none; gap: 2px; margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
+  body.touch .touchset { display: grid; }
+  .hint2 { font-size: 11px; color: #ffb27a; min-height: 14px; }
   #rotate { display: none; position: fixed; inset: 0; z-index: 50; background: #000; color: var(--hud); align-items: center; justify-content: center;
     flex-direction: column; gap: 14px; font-size: 18px; text-align: center; padding: 24px; }
   #rotate .ph { width: 54px; height: 90px; border: 4px solid var(--hud); border-radius: 10px; animation: rot 2s ease-in-out infinite; }
@@ -209,7 +241,8 @@
   body.touch .subtitle { margin-bottom: 10px; }
   body.touch .team { padding: 12px 8px; }
   body.touch .mode { padding: 8px 6px; }
-  body.touch .mode span { display: none; }
+  body.touch .mode span, body.touch .mapc span { display: none; }
+  body.touch .mapc img { aspect-ratio: 2 / 1; }
   body.touch #buymenu .panel, body.touch #scoreboard .panel { width: 100%; }
   body.touch #buyCols { grid-template-columns: repeat(2, 1fr); }
   body.touch .bitem { padding: 10px 8px; }
@@ -222,6 +255,7 @@
 
 <div id="hud" class="hidden">
   <canvas id="radar" width="190" height="190"></canvas>
+  <div id="fps" class="hidden"></div>
   <div id="topbar">
     <div class="sc t" id="scoreTBox"><small id="scoreTLbl">T</small><span id="scoreT">0</span></div>
     <div id="timer"><small id="roundLbl">ISINMA</small><span id="timerVal">--:--</span></div>
@@ -230,6 +264,7 @@
   <div id="killfeed"></div>
   <div id="chat"><div id="chatlog"></div><input id="chatinput" class="hidden" maxlength="120" autocomplete="off"></div>
   <div id="crosshair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i></div>
+  <div id="reddot" class="hidden"></div>
   <div id="center"><div id="centerMain"></div><div id="centerSub"></div></div>
   <div id="hint"></div>
   <div id="enemyName"></div>
@@ -275,6 +310,8 @@
       <button class="mode" data-mode="tdm"><b>TAKIMLI ÖLÜM MAÇI</b><span>10 dk · en çok leşi alan takım</span><small id="cnt-tdm">0 oyuncu</small></button>
       <button class="mode" data-mode="ffa"><b>HERKES TEK</b><span>10 dk · en çok leşi alan oyuncu</span><small id="cnt-ffa">0 oyuncu</small></button>
     </div>
+    <label>Harita</label>
+    <div id="mapPick" class="maps"></div>
     <div id="teamPick">
       <div class="teams">
         <button class="team t" data-team="T"><b>TERÖRİSTLER</b><small id="cntT">0 oyuncu</small></button>
@@ -286,6 +323,10 @@
       <button class="team ffa" data-team="auto"><b>OYUNA GİR</b><small>Herkes herkese karşı · ölünce yeniden doğarsın</small></button>
     </div>
     <div id="menuStatus">Sunucuya bağlanılıyor…</div>
+    <div class="dl">
+      <a id="apkLink" class="dlbtn hidden" href="/download/DustStrike.apk" download>Android uygulamasını indir (APK)</a>
+      <button id="installBtn" class="dlbtn hidden">Bilgisayara uygulama olarak yükle</button>
+    </div>
     <div class="controls touch-only">
       <b>Sol taraf</b><span>Parmağını kaydır: hareket (az itersen sessiz yürürsün)</span>
       <b>Sağ taraf</b><span>Parmağını kaydır: etrafa bak / nişan al</span>
@@ -312,13 +353,44 @@
     <button id="resumeBtn">Oyuna dön</button>
     <label>Fare hassasiyeti: <span id="sensVal"></span><input type="range" id="sens" min="0.2" max="5" step="0.1"></label>
     <label>Ses düzeyi<input type="range" id="vol" min="0" max="1" step="0.05"></label>
-    <button id="teamBtn" class="secondary">Takım değiştir (M)</button>
-    <div class="controls">
+    <div class="row2">
+      <label>Grafik kalitesi
+        <select id="quality">
+          <option value="auto">Otomatik (60 FPS hedefi)</option>
+          <option value="low">Düşük (en hızlı)</option>
+          <option value="medium">Orta</option>
+          <option value="high">Yüksek</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" id="showFps"> FPS göster</label>
+    </div>
+    <div class="touch-only touchset">
+      <button id="editBtns" class="secondary">Butonları düzenle (yer ve boyut)</button>
+      <label class="chk"><input type="checkbox" id="gyro"> Jiroskop ile nişan al (telefonu çevirerek)</label>
+      <label>Jiroskop hassasiyeti: <span id="gyroSensVal"></span><input type="range" id="gyroSens" min="0.2" max="3" step="0.1"></label>
+      <div class="row2">
+        <label class="chk"><input type="checkbox" id="gyroInvX"> Yatayı ters çevir</label>
+        <label class="chk"><input type="checkbox" id="gyroInvY"> Dikeyi ters çevir</label>
+      </div>
+      <div id="gyroNote" class="hint2"></div>
+    </div>
+    <button id="teamBtn" class="secondary">Takım / mod / harita değiştir (M)</button>
+    <div class="controls desktop-only">
       <b>Tab</b><span>Skor tablosu</span>
-      <b>B</b><span>Satın al</span>
+      <b>B</b><span>Satın al (Eklentiler: 5)</span>
+      <b>Sağ tık</b><span>Dürbün / kırmızı nokta ile nişan</span>
       <b>Y / U</b><span>Sohbet / takım sohbeti</span>
     </div>
   </div>
+</div>
+
+<div id="touchEdit" class="hidden">
+  <b>Buton düzenleme</b>
+  <span>Butonları sürükleyerek taşı · seçili: <i id="teSelLbl">bir buton seç</i></span>
+  <label>Seçili boyut <input type="range" id="teSel" min="0.6" max="1.8" step="0.05" value="1" disabled></label>
+  <label>Tüm butonlar <input type="range" id="teAll" min="0.6" max="1.6" step="0.05" value="1"></label>
+  <button id="teReset" class="secondary">Sıfırla</button>
+  <button id="teDone">Bitti</button>
 </div>
 
 <div id="rotate"><div class="ph"></div>Oynamak için telefonu yatay çevir</div>

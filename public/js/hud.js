@@ -1,6 +1,6 @@
 // Ekran arayüzü: can/zırh/cephane, radar, skor tablosu, satın alma menüsü, sohbet ve mesajlar.
-import { WEAPONS, ITEMS, BUY_MENU } from '../shared/weapons.js';
-import { MAP_W, MAP_H, CELL, OX, OZ, SITES } from '../shared/map.js';
+import { WEAPONS, ITEMS, BUY_MENU, ATTACHMENTS, canAttach } from '../shared/weapons.js';
+import { CELL, MAPS, MAP_IDS, buildMap } from '../shared/map.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,7 +17,7 @@ export class HUD {
     this.noteTimer = 0;
     this.moneyShown = null;
     this.radar = $('radar').getContext('2d');
-    this.radarBase = this.buildRadarBase(map);
+    this.setMap(map);
   }
 
   set(id, value, prop = 'textContent') {
@@ -34,6 +34,10 @@ export class HUD {
   }
 
   setVisible(v) { this.toggle('hud', 'hidden', !v); }
+  fps(v) {
+    this.toggle('fps', 'hidden', v === null);
+    if (v !== null) this.set('fps', `${Math.round(v)} FPS`);
+  }
   setHP(hp) { this.set('hpVal', String(hp)); this.toggle('hpBlk', 'low', hp <= 25); }
   setArmor(a) { this.set('arVal', String(a)); }
   setMoney(m) {
@@ -80,6 +84,7 @@ export class HUD {
   flash(op) { const v = op.toFixed(3); if (this.cache.flash !== v) { this.cache.flash = v; $('flash').style.opacity = v; } }
   hurt(op) { const v = op.toFixed(3); if (this.cache.hurt !== v) { this.cache.hurt = v; $('hurt').style.opacity = v; } }
   scope(on) { this.toggle('scope', 'hidden', !on); }
+  redDot(on) { this.toggle('reddot', 'hidden', !on); }
   hint(text) { this.set('hint', text || ''); }
   spec(html) { this.set('spec', html ? `<span>${html}</span>` : '', 'innerHTML'); }
   enemyName(text, color) {
@@ -161,14 +166,16 @@ export class HUD {
   // ---------------- Satın alma menüsü
   buyPrice(item, ctx) {
     if (ctx.dm) return 0;
+    if (item.startsWith('att_')) return ATTACHMENTS[item.slice(4)].price;
     if (item === 'vesthelm' && ctx.armor >= 100 && !ctx.helmet) return 350;
     return (WEAPONS[item] || ITEMS[item]).price;
   }
+  itemDef(item) { return item.startsWith('att_') ? ATTACHMENTS[item.slice(4)] : WEAPONS[item] || ITEMS[item]; }
   buyColumns(ctx) {
     return BUY_MENU.map((cat) => ({
       name: cat.name,
       items: cat.items.filter((it) => {
-        const d = WEAPONS[it] || ITEMS[it];
+        const d = this.itemDef(it);
         if (it === 'kit') return ctx.team === 'CT' && !ctx.ffa;
         return !d.team || d.team === ctx.team || ctx.ffa;
       }),
@@ -187,12 +194,22 @@ export class HUD {
     const ctx = this.buyCtx;
     const cols = this.buyColumns(ctx);
     const owned = new Set([ctx.inv.primary, ctx.inv.secondary]);
-    $('buyCols').innerHTML = cols.map((c, ci) => `<div class="bcol ${this.buyCat === ci ? 'active' : ''}"><h3>${ci + 1}. ${c.name}</h3>` +
-      c.items.map((it, ii) => {
-        const d = WEAPONS[it] || ITEMS[it];
-        const price = this.buyPrice(it, ctx);
-        return `<button class="bitem ${owned.has(it) ? 'owned' : ''}" data-item="${it}" ${price > ctx.money ? 'disabled' : ''}><span><span class="k">${ii + 1}</span>${d.name}</span><span class="p">${price ? '$' + price : 'BEDAVA'}</span></button>`;
-      }).join('') + '</div>').join('');
+    $('buyCols').innerHTML = cols.map((c, ci) => {
+      const isAtt = c.items[0]?.startsWith('att_');
+      const title = isAtt ? `${c.name} <small style="color:#aaa">(${ctx.attWeapon ? WEAPONS[ctx.attWeapon].name : 'silah yok'})</small>` : c.name;
+      return `<div class="bcol ${this.buyCat === ci ? 'active' : ''}"><h3>${ci + 1}. ${title}</h3>` +
+        c.items.map((it, ii) => {
+          const d = this.itemDef(it);
+          const price = this.buyPrice(it, ctx);
+          let off = price > ctx.money, have = owned.has(it);
+          if (isAtt) {
+            const a = it.slice(4);
+            have = ctx.attHave.includes(a);
+            off = off || have || !ctx.attWeapon || !canAttach(ctx.attWeapon, a);
+          }
+          return `<button class="bitem ${have ? 'owned' : ''}" data-item="${it}" title="${d.desc || ''}" ${off ? 'disabled' : ''}><span><span class="k">${ii + 1}</span>${d.name}</span><span class="p">${have ? 'TAKILI' : price ? '$' + price : 'BEDAVA'}</span></button>`;
+        }).join('') + '</div>';
+    }).join('');
     $('buyMoney').textContent = '$' + ctx.money;
     for (const b of $('buyCols').querySelectorAll('.bitem')) b.onclick = () => ctx.onBuy(b.dataset.item);
   }
@@ -210,13 +227,14 @@ export class HUD {
   }
 
   // ---------------- Radar
+  setMap(map) { this.map = map; this.radarBase = this.buildRadarBase(map); }
   buildRadarBase(map) {
     const s = CELL * RADAR_PPM;
     const c = document.createElement('canvas');
-    c.width = MAP_W * s; c.height = MAP_H * s;
+    c.width = map.w * s; c.height = map.h * s;
     const g = c.getContext('2d');
-    for (let r = 0; r < MAP_H; r++) {
-      for (let col = 0; col < MAP_W; col++) {
+    for (let r = 0; r < map.h; r++) {
+      for (let col = 0; col < map.w; col++) {
         const ch = map.grid[r][col];
         if (ch === '#') continue;
         g.fillStyle = ch === '.' ? 'rgba(220,200,160,0.55)' : 'rgba(120,90,50,0.8)';
@@ -227,8 +245,8 @@ export class HUD {
     g.font = 'bold 22px Verdana';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    for (const [k, st] of Object.entries(SITES)) {
-      g.fillText(k, ((st.x0 + st.x1) / 2 - OX) * RADAR_PPM, ((st.z0 + st.z1) / 2 - OZ) * RADAR_PPM);
+    for (const [k, st] of Object.entries(map.sites)) {
+      g.fillText(k, ((st.x0 + st.x1) / 2 - map.ox) * RADAR_PPM, ((st.z0 + st.z1) / 2 - map.oz) * RADAR_PPM);
     }
     return c;
   }
@@ -242,11 +260,12 @@ export class HUD {
     g.fillRect(0, 0, W, W);
     g.translate(W / 2, W / 2);
     g.rotate(yaw);
-    g.translate(-(x - OX) * RADAR_PPM, -(z - OZ) * RADAR_PPM);
+    const { ox, oz } = this.map;
+    g.translate(-(x - ox) * RADAR_PPM, -(z - oz) * RADAR_PPM);
     g.drawImage(this.radarBase, 0, 0);
     const dot = (px, pz, col, r = 4) => {
       g.fillStyle = col;
-      g.beginPath(); g.arc((px - OX) * RADAR_PPM, (pz - OZ) * RADAR_PPM, r, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc((px - ox) * RADAR_PPM, (pz - oz) * RADAR_PPM, r, 0, Math.PI * 2); g.fill();
     };
     for (const m of mates) dot(m.x, m.z, team === 'T' ? '#ffb347' : '#7fb2ff', 4);
     if (bomb) dot(bomb.x, bomb.z, bomb.planted ? '#ff2a2a' : '#ff9d2a', bomb.planted ? 6 : 4);
@@ -261,17 +280,46 @@ export class HUD {
   // ---------------- Menü
   showMenu(v) { $('menu').classList.toggle('hidden', !v); }
   menuStatus(t) { $('menuStatus').textContent = t; }
-  menuRooms(rooms, sel) {
+  // Menüdeki mod + harita seçimi; seçili mod o haritada yoksa ilk uygun harita seçilir ve döndürülür
+  menuRooms(rooms, mode, mapId, onMapPick) {
     for (const k of ['classic', 'tdm', 'ffa']) {
-      const r = rooms && rooms[k];
-      $('cnt-' + k).textContent = r ? `${r.total}/${r.max} oyuncu` : '';
-      document.querySelector(`.mode[data-mode="${k}"]`).classList.toggle('sel', k === sel);
+      let total = 0, max = 0;
+      for (const r of Object.values(rooms || {})) if (r.mode === k) { total += r.total; max += r.max; }
+      $('cnt-' + k).textContent = rooms ? `${total} oyuncu` : '';
+      document.querySelector(`.mode[data-mode="${k}"]`).classList.toggle('sel', k === mode);
     }
-    const r = rooms && rooms[sel];
+    const ids = MAP_IDS.filter((id) => MAPS[id].modes.includes(mode));
+    if (!ids.includes(mapId)) mapId = ids[0];
+    $('mapPick').innerHTML = ids.map((id) => {
+      const r = rooms && rooms[`${mode}:${id}`];
+      return `<button class="mapc ${id === mapId ? 'sel' : ''}" data-map="${id}"><img src="${this.mapPreview(id)}" alt=""><b>${MAPS[id].title}</b><span>${MAPS[id].desc}</span><small>${r ? `${r.total}/${r.max}` : '0'} oyuncu</small></button>`;
+    }).join('');
+    for (const b of $('mapPick').querySelectorAll('.mapc')) b.onclick = () => onMapPick && onMapPick(b.dataset.map);
+    const r = rooms && rooms[`${mode}:${mapId}`];
     $('cntT').textContent = (r ? r.T : 0) + ' oyuncu';
     $('cntCT').textContent = (r ? r.CT : 0) + ' oyuncu';
-    $('teamPick').classList.toggle('hidden', sel === 'ffa');
-    $('ffaPick').classList.toggle('hidden', sel !== 'ffa');
+    $('teamPick').classList.toggle('hidden', mode === 'ffa');
+    $('ffaPick').classList.toggle('hidden', mode !== 'ffa');
+    return mapId;
+  }
+  mapPreview(id) {
+    this.previews = this.previews || {};
+    if (this.previews[id]) return this.previews[id];
+    const m = buildMap(id);
+    const s = 3;
+    const c = document.createElement('canvas');
+    c.width = m.w * s; c.height = m.h * s;
+    const g = c.getContext('2d');
+    g.fillStyle = '#16130f'; g.fillRect(0, 0, c.width, c.height);
+    for (let r = 0; r < m.h; r++) for (let col = 0; col < m.w; col++) {
+      const ch = m.grid[r][col];
+      if (ch === '#') continue;
+      g.fillStyle = ch === '.' ? '#cdb88f' : '#7a5a32';
+      g.fillRect(col * s, r * s, s, s);
+    }
+    g.fillStyle = 'rgba(220,60,40,0.55)';
+    for (const st of Object.values(m.sites)) g.fillRect((st.x0 - m.ox) / CELL * s, (st.z0 - m.oz) / CELL * s, (st.x1 - st.x0) / CELL * s, (st.z1 - st.z0) / CELL * s);
+    return (this.previews[id] = c.toDataURL());
   }
   showPause(v) { $('pause').classList.toggle('hidden', !v); }
 }

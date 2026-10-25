@@ -6,8 +6,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { buildMap, siteAt, inBuyZone } from './public/shared/map.js';
-import { WEAPONS, ITEMS, DEFAULT_PISTOL, calcDamage, blastDamage } from './public/shared/weapons.js';
+import { buildMap, MAPS, MAP_IDS } from './public/shared/map.js';
+import { WEAPONS, ITEMS, ATTACHMENTS, DEFAULT_PISTOL, calcDamage, blastDamage, canAttach, attCode } from './public/shared/weapons.js';
 import { raycastWorld, stepNade, groundAt, NADE_DT, NADE_FUSE } from './public/shared/physics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,11 +50,18 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.json': 'application/json',
   '.svg': 'image/svg+xml',
+  '.apk': 'application/vnd.android.package-archive',
 };
 
 const httpServer = http.createServer((req, res) => {
   let urlPath;
   try { urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); return res.end(); }
+  if (urlPath === '/stats') {
+    // Sunucu sağlık bilgisi (yük testi için): oyuncu sayıları ve tick süreleri
+    const busy = Object.values(rooms).filter((r) => r.players.size).map((r) => ({ room: r.key, players: r.players.size, phase: r.phase }));
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+    return res.end(JSON.stringify({ uptime: Math.round(process.uptime()), clients: clients.size, rooms: busy, tickAvgMs: +stats.avg.toFixed(2), tickMaxMs: +stats.max.toFixed(2), lateTicks: stats.late, memMB: Math.round(process.memoryUsage().rss / 1048576) }));
+  }
   let root = PUBLIC_DIR;
   if (urlPath.startsWith('/three/')) { root = THREE_DIR; urlPath = urlPath.slice('/three'.length); }
   if (urlPath === '/') urlPath = '/index.html';
@@ -68,7 +75,6 @@ const httpServer = http.createServer((req, res) => {
 });
 
 // ---------------------------------------------------------------- Yardımcılar
-const MAP = buildMap();
 const clients = new Map();
 let nextPlayerId = 1, nextItemId = 1, nextNadeId = 1;
 
@@ -88,15 +94,17 @@ function cleanName(s) {
 function youMsg(p) {
   return {
     t: 'you', team: p.team, alive: p.alive, hp: p.hp, armor: p.armor, helmet: p.helmet, kit: p.kit,
-    money: p.money, primary: p.primary, secondary: p.secondary, nades: p.nades,
+    money: p.money, primary: p.primary, secondary: p.secondary, nades: p.nades, att: p.att,
   };
 }
 const sendYou = (p) => send(p, youMsg(p));
 
 // ---------------------------------------------------------------- Oda (bir oyun modu)
 class Room {
-  constructor(mode) {
+  constructor(mode, mapId) {
     this.mode = mode;
+    this.key = `${mode}:${mapId}`;
+    this.map = buildMap(mapId);
     this.cfg = MODES[mode];
     this.dm = mode !== 'classic';
     this.players = new Map();
@@ -131,7 +139,7 @@ class Room {
   stateMsg() {
     const t = now();
     return {
-      t: 'state', mode: this.mode, phase: this.phase, round: this.round, score: this.score, msg: this.msg, win: WIN_ROUNDS,
+      t: 'state', mode: this.mode, map: this.map.id, phase: this.phase, round: this.round, score: this.score, msg: this.msg, win: WIN_ROUNDS,
       left: this.phaseEnd ? Math.max(0, this.phaseEnd - t) : 0,
       buyLeft: this.dm || this.phase === 'warmup' ? 1e9 : Math.max(0, this.roundStart + BUY_TIME * 1000 - t),
     };
@@ -159,7 +167,7 @@ class Room {
     this.players.set(p.id, p);
     p.kills = 0; p.deaths = 0; p.alive = false; p.lastPrimary = null; p.team = null;
     p.money = this.dm ? MAX_MONEY : START_MONEY;
-    send(p, { t: 'room', mode: this.mode });
+    send(p, { t: 'room', mode: this.mode, map: this.map.id });
     this.setTeam(p, team, true);
   }
 
@@ -213,6 +221,7 @@ class Room {
     p.secondary = DEFAULT_PISTOL[p.team] || 'glock';
     p.nades = { he: 0, flash: 0, smoke: 0 };
     p.armor = 0; p.helmet = false; p.kit = false;
+    p.att = { 1: [], 2: [] };
   }
 
   owns(p, w) {
@@ -225,7 +234,7 @@ class Room {
   pickSpawn(p) {
     const others = [...this.players.values()].filter((o) => o !== p && o.alive);
     if (!this.dm) {
-      const list = MAP.spawns[p.team];
+      const list = this.map.spawns[p.team];
       let best = list[0], bestD = -1;
       for (const s of [...list].sort(() => Math.random() - 0.5)) {
         let d = Infinity;
@@ -237,9 +246,9 @@ class Room {
     }
     // Ölüm maçı: rastgele adaylar arasından düşmanlara en uzak olanı seç
     const foes = others.filter((o) => this.enemies(p, o));
-    let best = MAP.dmSpawns[0], bestD = -Infinity;
+    let best = this.map.dmSpawns[0], bestD = -Infinity;
     for (let i = 0; i < 24; i++) {
-      const s = MAP.dmSpawns[Math.floor(Math.random() * MAP.dmSpawns.length)];
+      const s = this.map.dmSpawns[Math.floor(Math.random() * this.map.dmSpawns.length)];
       let d = 1e6;
       for (const o of foes) d = Math.min(d, dist2(o.pos, s));
       if (others.some((o) => dist2(o.pos, s) < 1.2)) d = -1;
@@ -252,7 +261,7 @@ class Room {
     const t = now();
     const s = this.pickSpawn(p);
     p.pos = [s[0], 0, s[2]];
-    p.yaw = this.dm ? Math.atan2(s[0], s[2]) : (p.team === 'T' ? 0 : Math.PI);
+    p.yaw = this.dm ? Math.atan2(s[0], s[2]) : this.map.yaw[p.team];
     p.pitch = 0;
     p.alive = true;
     p.hp = 100;
@@ -262,6 +271,7 @@ class Room {
       // Ölüm maçında son alınan ana silah, zırh ve kask otomatik verilir
       this.resetInventory(p);
       p.primary = p.lastPrimary;
+      p.att[1] = p.lastPrimary ? [...(p.lastAtt || [])] : [];
       p.armor = 100; p.helmet = true;
       p.money = MAX_MONEY;
       p.protectUntil = t + SPAWN_PROTECT * 1000;
@@ -277,13 +287,13 @@ class Room {
   dropPos(p, forward = 1.2) {
     const d = [-Math.sin(p.yaw), 0, -Math.cos(p.yaw)];
     const o = [p.pos[0], p.pos[1] + 0.9, p.pos[2]];
-    const hit = raycastWorld(MAP.boxes, o, d, forward + 0.4);
+    const hit = raycastWorld(this.map.boxes, o, d, forward + 0.4);
     const f = Math.max(0, Math.min(forward, hit.t - 0.4));
     const x = o[0] + d[0] * f, z = o[2] + d[2] * f;
-    return [r2(x), r2(groundAt(MAP.boxes, x, z, p.pos[1]) + 0.02), r2(z)];
+    return [r2(x), r2(groundAt(this.map.boxes, x, z, p.pos[1]) + 0.02), r2(z)];
   }
 
-  feetPos(p) { return [p.pos[0], r2(groundAt(MAP.boxes, p.pos[0], p.pos[2], p.pos[1]) + 0.02), p.pos[2]]; }
+  feetPos(p) { return [p.pos[0], r2(groundAt(this.map.boxes, p.pos[0], p.pos[2], p.pos[1]) + 0.02), p.pos[2]]; }
 
   dropItem(p, w, atFeet = false) {
     this.items.push({ id: nextItemId++, w, p: atFeet ? this.feetPos(p) : this.dropPos(p), owner: p.id, t: now() });
@@ -519,7 +529,7 @@ class Room {
     if (this.dm || this.phase === 'warmup') return true;
     if (this.phase !== 'freeze' && this.phase !== 'live') return false;
     if (now() - this.roundStart > BUY_TIME * 1000) return false;
-    return inBuyZone(p.team, p.pos[0], p.pos[2]);
+    return this.map.inBuyZone(p.team, p.pos[0], p.pos[2]);
   }
 
   buy(p, item) {
@@ -540,11 +550,14 @@ class Room {
         if (p.primary === item) return note('Bu silah zaten sende');
         if (p.primary && !this.dm) this.dropItem(p, p.primary);
         p.primary = item;
+        p.att[1] = [];
+        p.lastAtt = [];
         p.lastPrimary = item;
       } else if (w.slot === 2) {
         if (p.secondary === item) return note('Bu silah zaten sende');
         if (p.secondary && !this.dm) this.dropItem(p, p.secondary);
         p.secondary = item;
+        p.att[2] = [];
       } else return;
     } else if (item === 'vest') {
       if (p.armor >= 100) return note('Zaten tam zırhın var');
@@ -561,6 +574,27 @@ class Room {
     sendYou(p);
   }
 
+  attOf(p, w) { const s = WEAPONS[w]?.slot; return s === 1 || s === 2 ? p.att[s] || [] : []; }
+  curAtt(p) { return this.attOf(p, p.weapon); }
+
+  buyAttachment(p, att, slot) {
+    const note = (text) => send(p, { t: 'note', text });
+    if (!this.canBuy(p)) return note('Şu an satın alamazsın (alan dışında ya da süre doldu)');
+    const def = ATTACHMENTS[att];
+    if (!def) return;
+    const w = slot === 1 ? p.primary : p.secondary;
+    if (!w) return note('Önce bu yuvaya bir silah al');
+    if (!canAttach(w, att)) return note(`${def.name} bu silaha takılamaz`);
+    if (p.att[slot].includes(att)) return note(`${def.name} zaten takılı`);
+    const price = this.dm ? 0 : def.price;
+    if (p.money < price) return note('Yeterli paran yok');
+    p.money -= price;
+    p.att[slot].push(att);
+    if (slot === 1) p.lastAtt = [...p.att[1]];
+    send(p, { t: 'bought', item: 'att_' + att });
+    sendYou(p);
+  }
+
   // ---------------- Oda içi mesajlar
   handle(p, m) {
     const b = this.bomb;
@@ -569,7 +603,7 @@ class Room {
         if (!p.alive || m.s !== p.sid) return;
         const pos = vec3(m.p);
         if (!pos) return;
-        const bd = MAP.bounds;
+        const bd = this.map.bounds;
         p.pos = [Math.max(bd.x0, Math.min(bd.x1, pos[0])), Math.max(0, Math.min(20, pos[1])), Math.max(bd.z0, Math.min(bd.z1, pos[2]))];
         if (finite(m.y)) p.yaw = m.y;
         if (finite(m.x)) p.pitch = Math.max(-1.6, Math.min(1.6, m.x));
@@ -601,7 +635,7 @@ class Room {
             blood = true;
           }
         }
-        this.broadcast({ t: 'shot', id: p.id, w: m.w, o, e, b: blood, alt: !!m.alt }, p);
+        this.broadcast({ t: 'shot', id: p.id, w: m.w, o, e, b: blood, alt: !!m.alt, s: this.attOf(p, m.w).includes('sil') ? 1 : 0 }, p);
         break;
       }
 
@@ -623,6 +657,7 @@ class Room {
       }
 
       case 'buy':
+        if (typeof m.item === 'string' && m.item.startsWith('att_')) { this.buyAttachment(p, m.item.slice(4), m.slot === 2 ? 2 : 1); break; }
         if (typeof m.item === 'string') this.buy(p, m.item);
         break;
 
@@ -630,7 +665,7 @@ class Room {
         if (!p.alive) return;
         if (m.w === 'bomb') { this.dropBombIfCarrier(p, true); break; }
         if (m.w && (p.primary === m.w || p.secondary === m.w)) {
-          if (p.primary === m.w) { p.primary = null; p.lastPrimary = null; } else p.secondary = null;
+          if (p.primary === m.w) { p.primary = null; p.lastPrimary = null; p.att[1] = []; } else { p.secondary = null; p.att[2] = []; }
           this.dropItem(p, m.w);
           sendYou(p);
         }
@@ -639,7 +674,7 @@ class Room {
 
       case 'plant': {
         if (!p.alive || this.phase !== 'live' || !b || b.state !== 'carried' || b.carrier !== p.id) return;
-        const site = siteAt(p.pos[0], p.pos[2]);
+        const site = this.map.siteAt(p.pos[0], p.pos[2]);
         if (!site) return;
         b.planting = { id: p.id, until: now() + PLANT_TIME * 1000, pos: [...p.pos], site };
         this.broadcast({ t: 'planting', id: p.id, p: p.pos }, p);
@@ -684,7 +719,7 @@ class Room {
         const d = dist(n.p, chest);
         if (d > HE_RADIUS) continue;
         const dir = [(chest[0] - n.p[0]) / d, (chest[1] - n.p[1]) / d, (chest[2] - n.p[2]) / d];
-        const hit = raycastWorld(MAP.boxes, n.p, dir, d);
+        const hit = raycastWorld(this.map.boxes, n.p, dir, d);
         if (hit.hit && hit.t < d - 0.3) continue;
         this.damage(v, owner, blastDamage(100 * (1 - d / HE_RADIUS), v.armor), 'he', false);
       }
@@ -789,8 +824,8 @@ class Room {
         if (!p.alive) continue;
         if (it.owner === p.id && t - it.t < 1500) continue;
         if (dist2(p.pos, it.p) > 1.1 || Math.abs(p.pos[1] - it.p[1]) > 1.5) continue;
-        if (w.slot === 1 && !p.primary) p.primary = it.w;
-        else if (w.slot === 2 && !p.secondary) p.secondary = it.w;
+        if (w.slot === 1 && !p.primary) { p.primary = it.w; p.att[1] = []; }
+        else if (w.slot === 2 && !p.secondary) { p.secondary = it.w; p.att[2] = []; }
         else continue;
         this.items.splice(i, 1);
         sendYou(p);
@@ -805,7 +840,7 @@ class Room {
     if (!this.players.size) return;
     const ps = [];
     for (const p of this.players.values()) {
-      ps.push([p.id, r2(p.pos[0]), r2(p.pos[1]), r2(p.pos[2]), Math.round(p.yaw * 1000) / 1000, Math.round(p.pitch * 1000) / 1000, r2(p.crouch), p.weapon, p.alive ? 1 : 0]);
+      ps.push([p.id, r2(p.pos[0]), r2(p.pos[1]), r2(p.pos[2]), Math.round(p.yaw * 1000) / 1000, Math.round(p.pitch * 1000) / 1000, r2(p.crouch), p.weapon, p.alive ? 1 : 0, attCode(this.curAtt(p))]);
     }
     this.broadcast({ t: 'snap', ps });
   }
@@ -817,7 +852,7 @@ class Room {
     this.nadeAcc += dt;
     while (this.nadeAcc >= NADE_DT) {
       this.nadeAcc -= NADE_DT;
-      for (const n of this.nades) stepNade(MAP.boxes, n);
+      for (const n of this.nades) stepNade(this.map.boxes, n);
     }
     for (const n of [...this.nades]) if (n.steps >= n.fuseSteps) this.explodeNade(n);
     this.broadcastSnap();
@@ -825,12 +860,14 @@ class Room {
 }
 
 // ---------------------------------------------------------------- Odalar ve lobi
-const rooms = { classic: new Room('classic'), tdm: new Room('tdm'), ffa: new Room('ffa') };
+// Her harita için o haritanın desteklediği her mod ayrı bir oda (ör. "ffa:depo")
+const rooms = {};
+for (const mapId of MAP_IDS) for (const mode of MAPS[mapId].modes) rooms[`${mode}:${mapId}`] = new Room(mode, mapId);
 
 function roomsMsg() {
   const r = {};
   for (const [k, room] of Object.entries(rooms)) {
-    r[k] = { T: room.teamOf('T').length, CT: room.teamOf('CT').length, total: room.players.size, max: room.cfg.max, phase: room.phase };
+    r[k] = { mode: room.mode, map: room.map.id, T: room.teamOf('T').length, CT: room.teamOf('CT').length, total: room.players.size, max: room.cfg.max, phase: room.phase };
   }
   return { t: 'rooms', rooms: r };
 }
@@ -844,7 +881,8 @@ function handle(p, m) {
   switch (m.t) {
     case 'join': {
       p.name = cleanName(m.name);
-      const room = rooms[m.mode] || rooms.classic;
+      const mode = MODES[m.mode] ? m.mode : 'classic';
+      const room = rooms[`${mode}:${m.map}`] || rooms[`${mode}:kum`];
       if (p.room === room) { if (room.cfg.teams) room.setTeam(p, m.team); break; }
       if (room.players.size >= room.cfg.max) { send(p, { t: 'joinfail', text: `${room.cfg.name} dolu (${room.cfg.max} kişi). Başka bir mod seç.` }); break; }
       if (p.room) p.room.remove(p);
@@ -864,11 +902,18 @@ function handle(p, m) {
 }
 
 let lastTick = now(), lastSlow = 0;
+const stats = { avg: 0, max: 0, late: 0, maxReset: now() };
 setInterval(() => {
   const t = now();
   const dt = Math.min(0.2, (t - lastTick) / 1000);
+  if (t - lastTick > 80) stats.late++;
   lastTick = t;
+  const t0 = performance.now();
   for (const room of Object.values(rooms)) room.tick(t, dt);
+  const took = performance.now() - t0;
+  stats.avg = stats.avg * 0.95 + took * 0.05;
+  if (t - stats.maxReset > 10000) { stats.max = 0; stats.maxReset = t; }
+  stats.max = Math.max(stats.max, took);
   if (t - lastSlow > 2000) {
     lastSlow = t;
     for (const room of Object.values(rooms)) {
@@ -886,7 +931,7 @@ wss.on('connection', (ws) => {
   const p = {
     id: nextPlayerId++, ws, name: 'Oyuncu', team: 'SPEC', room: null, alive: false,
     hp: 100, armor: 0, helmet: false, kit: false, money: START_MONEY,
-    primary: null, secondary: null, lastPrimary: null, nades: { he: 0, flash: 0, smoke: 0 },
+    primary: null, secondary: null, lastPrimary: null, att: { 1: [], 2: [] }, lastAtt: [], nades: { he: 0, flash: 0, smoke: 0 },
     pos: [0, 0, 0], yaw: 0, pitch: 0, crouch: 0, weapon: 'knife',
     kills: 0, deaths: 0, sid: 0, respawnAt: 0, protectUntil: 0, lastShot: {}, ping: 0,
   };
