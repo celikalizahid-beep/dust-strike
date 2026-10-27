@@ -12,9 +12,10 @@ function canvasTex(size, draw) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 8;
+  t.anisotropy = maxAniso;
   return t;
 }
+let maxAniso = 8;
 function pixelNoise(g, size, amount) {
   const img = g.getImageData(0, 0, size, size);
   const d = img.data;
@@ -195,6 +196,7 @@ const THEMES = {
   desert: {
     sky: [0x3d7fc4, 0xa6c8e6, 0xe2d3b4], clouds: 0.55, fog: 0xd9ccb0, fogNear: 70, fogFar: 230,
     sun: [0xfff0d6, 2.7, [38, 70, 22]], hemi: [0xd6e6ff, 0x9a8a70, 1.15], envGround: 0x9c9384,
+    grade: { tint: [1.05, 1.0, 0.92], sat: 1.1 },
     make: () => ({
       wallA: TEX.bricks(0xc9a66e, '#8f7449'), wallB: TEX.plaster(0xd4bc8e), trim: TEX.trim(0xa68756),
       ground: TEX.ground(0xc3a272, 'sand'), site: TEX.tiles(0xbaa27c, '#7d6a4c'), crate: TEX.woodCrate(0x8f6236),
@@ -203,6 +205,7 @@ const THEMES = {
   industrial: {
     sky: [0x51667a, 0x9eabb6, 0x8d9296], clouds: 0.9, fog: 0x939ba2, fogNear: 45, fogFar: 170,
     sun: [0xeef2f7, 2.3, [-30, 60, 40]], hemi: [0xd0dbe6, 0x6a6a68, 1.6], envGround: 0x7b7d7e,
+    grade: { tint: [0.97, 1.0, 1.03], sat: 1.0 },
     make: () => ({
       wallA: TEX.panels(0x8e9090), wallB: TEX.corrugated(0x5d7186), trim: TEX.trim(0xd2a62a, 'hazard'),
       ground: TEX.ground(0x8a8c8e, 'concrete'), site: TEX.tiles(0xb8a050, '#555'), crate: TEX.container(0xb5532a), crate2: TEX.container(0x2f5e8a),
@@ -211,6 +214,7 @@ const THEMES = {
   snow: {
     sky: [0x6f95c0, 0xc9d9e8, 0xeef3f7], clouds: 0.7, fog: 0xdfe8ef, fogNear: 45, fogFar: 180,
     sun: [0xf3f7ff, 2.3, [30, 45, -35]], hemi: [0xdde8ff, 0xb8c4d0, 1.25], envGround: 0xe6edf3, snowfall: true,
+    grade: { tint: [0.96, 1.0, 1.05], sat: 1.02 },
     make: () => ({
       wallA: TEX.stone(0x8d939b), wallB: TEX.planks(0x93714f), trim: TEX.trim(0xf2f6fa, 'snow'),
       ground: TEX.ground(0xe6ecf2, 'snow'), site: TEX.tiles(0xb8c3cc, '#6d7680'), crate: TEX.woodCrate(0x6e7b4d),
@@ -219,6 +223,7 @@ const THEMES = {
   arena: {
     sky: [0x2a2346, 0xd0745a, 0x3a2f45], clouds: 0.35, fog: 0x4a3a50, fogNear: 40, fogFar: 150,
     sun: [0xffd8b4, 2.9, [-25, 35, 30]], hemi: [0xd2c4f2, 0x76666c, 1.7], envGround: 0x7a7e86, glowTrim: 0xff7a2a,
+    grade: { tint: [1.03, 0.97, 1.05], sat: 1.15 },
     make: () => ({
       wallA: TEX.tech(0x646b78, '#ff8a3a'), wallB: TEX.tech(0x5c6370, '#3aa8ff'), trim: TEX.trim(0x3a3d44),
       ground: TEX.ground(0x767a82, 'grid'), site: TEX.tiles(0x666a70, '#333'), crate: TEX.metalBox(0x7a808a),
@@ -335,6 +340,72 @@ function makeEnvironment(renderer, theme) {
   return rt;
 }
 
+// Duvar ve sandık diplerine yumuşak ortam gölgesi: haritadan bir kez hesaplanan doku, zemine çarpılarak
+// uygulanır (her kalitede çalışır, maliyeti yok denecek kadar az). Uzakta sise karışıp kaybolur.
+const AO_PPM = 4; // metre başına piksel
+function boxBlur(src, w, h, r) {
+  const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
+  const n = 2 * r + 1;
+  for (let y = 0; y < h; y++) {
+    let acc = 0;
+    for (let x = -r; x <= r; x++) acc += src[y * w + Math.min(w - 1, Math.max(0, x))];
+    for (let x = 0; x < w; x++) {
+      tmp[y * w + x] = acc / n;
+      acc += src[y * w + Math.min(w - 1, x + r + 1)] - src[y * w + Math.max(0, x - r)];
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let acc = 0;
+    for (let y = -r; y <= r; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = acc / n;
+      acc += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+    }
+  }
+  return out;
+}
+function makeFloorAO(map, theme) {
+  const W = map.w * CELL * AO_PPM, H = map.h * CELL * AO_PPM;
+  const occ = new Float32Array(W * H);
+  for (const b of map.boxes) {
+    const x0 = Math.max(0, Math.round((b.min[0] - map.ox) * AO_PPM)), x1 = Math.min(W, Math.round((b.max[0] - map.ox) * AO_PPM));
+    const z0 = Math.max(0, Math.round((b.min[2] - map.oz) * AO_PPM)), z1 = Math.min(H, Math.round((b.max[2] - map.oz) * AO_PPM));
+    const v = b.type === 'wall' ? 1 : b.big ? 0.85 : 0.7;
+    for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) occ[z * W + x] = Math.max(occ[z * W + x], v);
+  }
+  let ao = boxBlur(occ, W, H, 3);
+  ao = boxBlur(ao, W, H, 2);
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const img = g.createImageData(W, H);
+  for (let i = 0; i < W * H; i++) {
+    const v = Math.round(255 * (1 - 0.62 * Math.min(1, ao[i] * 1.15)));
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
+    img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.generateMipmaps = true;
+  const fade = theme.fogNear + (theme.fogFar - theme.fogNear) * 0.35;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { map: { value: tex }, fade: { value: fade } },
+    vertexShader: 'varying vec2 vUv; varying float vD; void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }',
+    fragmentShader: `uniform sampler2D map; uniform float fade; varying vec2 vUv; varying float vD;
+      void main(){ float a = texture2D(map, vUv).r; a = mix(a, 1.0, smoothstep(fade * 0.5, fade, vD)); gl_FragColor = vec4(vec3(a), 1.0);
+      #include <colorspace_fragment>
+      }`,
+    blending: THREE.MultiplyBlending, premultipliedAlpha: true, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(map.w * CELL, map.h * CELL), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.02;
+  mesh.renderOrder = 1; // zeminden ve site karolarından sonra çizilsin
+  mesh.userData.noAO = true;
+  return { mesh, tex };
+}
+
 function makeSnow(count) {
   const geo = new THREE.BufferGeometry();
   const pos = new Float32Array(count * 3);
@@ -351,6 +422,7 @@ function makeSnow(count) {
 
 // ---------------------------------------------------------------- Dünya
 export function buildWorld(scene, map, opts = {}) {
+  if (opts.renderer) maxAniso = Math.min(16, opts.renderer.capabilities.getMaxAnisotropy());
   const theme = THEMES[map.theme] || THEMES.desert;
   const T = theme.make();
   const group = new THREE.Group();
@@ -375,7 +447,8 @@ export function buildWorld(scene, map, opts = {}) {
     }
   }
   for (const s of Object.values(map.sites)) gb.site.box([s.x0, 0, s.z0], [s.x1, 0.015, s.z1], { scale: 4, bottom: 1, gradH: 1 });
-  if (theme.glowTrim) mats.glow = new THREE.MeshBasicMaterial({ color: theme.glowTrim });
+  // Işık parlaması açıkken (Yüksek / Ultra) neon şeritler parlasın diye renk HDR olarak güçlendirilir
+  if (theme.glowTrim) mats.glow = new THREE.MeshBasicMaterial({ color: new THREE.Color(theme.glowTrim).multiplyScalar(opts.hdr || 1) });
 
   for (const [k, builder] of Object.entries(gb)) {
     if (!builder.pos.length || !mats[k]) continue;
@@ -393,6 +466,8 @@ export function buildWorld(scene, map, opts = {}) {
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   group.add(floor);
+  const floorAO = makeFloorAO(map, theme);
+  group.add(floorAO.mesh);
 
   for (const [k, s] of Object.entries(map.sites)) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({ map: letterTex(k), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
@@ -422,6 +497,7 @@ export function buildWorld(scene, map, opts = {}) {
   sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 1; sc.far = 260;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.05;
+  sun.shadow.radius = opts.shadowRadius || 1;
   group.add(sun);
   group.add(sun.target);
 
@@ -432,7 +508,7 @@ export function buildWorld(scene, map, opts = {}) {
   let time = 0;
 
   return {
-    map, sun, env,
+    map, sun, env, grade: theme.grade,
     setShadows(on) { sun.castShadow = on; },
     update(camera, dt = 0.016) {
       time += dt;
@@ -460,6 +536,7 @@ export function buildWorld(scene, map, opts = {}) {
         }
       });
       for (const t of Object.values(T)) t.dispose();
+      floorAO.tex.dispose();
       if (env) env.dispose();
       if (scene.environment === env?.texture) scene.environment = null;
     },

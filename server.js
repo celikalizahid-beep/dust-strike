@@ -14,6 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const THREE_DIR = path.join(__dirname, 'node_modules', 'three', 'build');
+const THREE_ADDONS_DIR = path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm');
 
 // Oyun ayarları (saniye)
 const FREEZE_TIME = 5;
@@ -63,7 +64,8 @@ const httpServer = http.createServer((req, res) => {
     return res.end(JSON.stringify({ uptime: Math.round(process.uptime()), clients: clients.size, rooms: busy, tickAvgMs: +stats.avg.toFixed(2), tickMaxMs: +stats.max.toFixed(2), lateTicks: stats.late, memMB: Math.round(process.memoryUsage().rss / 1048576) }));
   }
   let root = PUBLIC_DIR;
-  if (urlPath.startsWith('/three/')) { root = THREE_DIR; urlPath = urlPath.slice('/three'.length); }
+  if (urlPath.startsWith('/three/addons/')) { root = THREE_ADDONS_DIR; urlPath = urlPath.slice('/three/addons'.length); }
+  else if (urlPath.startsWith('/three/')) { root = THREE_DIR; urlPath = urlPath.slice('/three'.length); }
   if (urlPath === '/') urlPath = '/index.html';
   const file = path.resolve(root, '.' + urlPath);
   if (!file.startsWith(root + path.sep)) { res.writeHead(403); return res.end(); }
