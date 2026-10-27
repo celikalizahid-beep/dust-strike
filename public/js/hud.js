@@ -237,6 +237,23 @@ export class HUD {
     }).join('');
     $('buyMoney').textContent = '$' + ctx.money;
     for (const b of $('buyCols').querySelectorAll('.bitem')) b.onclick = () => ctx.onBuy(b.dataset.item);
+    this.renderRefunds(ctx);
+  }
+  // İade şeridi: bu raund alınıp hâlâ iade edilebilen eşyalar (her biri ayrı buton)
+  renderRefunds(ctx) {
+    const list = ctx.refunds || [];
+    const box = $('buyRefund');
+    box.classList.toggle('hidden', !list.length);
+    if (!list.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<span class="rflbl">Yanlışlıkla mı aldın? İade et:</span>' + list.map((r, i) => {
+      const d = this.itemDef(r.item);
+      const on = r.item.startsWith('att_') ? WEAPONS[r.slot === 2 ? ctx.inv.secondary : ctx.inv.primary] : null;
+      return `<button class="rfchip" data-i="${i}" title="Tam fiyatına geri al">↩ ${d.name}${on ? ` (${on.name})` : ''}<b>+$${r.price}</b></button>`;
+    }).join('');
+    for (const b of box.querySelectorAll('.rfchip')) {
+      const r = list[Number(b.dataset.i)];
+      b.onclick = () => ctx.onRefund(r.item, r.slot);
+    }
   }
   buyKey(n) {
     const cols = this.buyColumns(this.buyCtx);

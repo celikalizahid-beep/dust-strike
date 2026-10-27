@@ -317,6 +317,14 @@ export function buy() {
   tone(o, t, 0.08, 'triangle', 1400, 1400, 0.3);
   tone(o, t + 0.07, 0.15, 'triangle', 2100, 2100, 0.3);
 }
+// İade: satın alma sesinin tersi (inen iki nota)
+export function refund() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = out(null, 0.35, 0.2);
+  tone(o, t, 0.08, 'triangle', 2100, 2100, 0.3);
+  tone(o, t + 0.07, 0.15, 'triangle', 1200, 1200, 0.3);
+}
 export function chatBlip() {
   if (!ctx) return;
   const t = ctx.currentTime;

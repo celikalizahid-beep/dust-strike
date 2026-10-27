@@ -108,6 +108,10 @@ Son işlem efektleri `public/js/post.js` içinde (three.js eklentileri sunucuda 
 - T'lerden biri C4 taşır; A veya B bölgesine kurup 40 saniye korursa T kazanır.
 - CT'ler bombayı imha ederse (10 sn, kitle 5 sn) ya da süre biterse CT kazanır. Takımı yok eden de kazanır.
 - Para sistemi: başlangıç $800, leş $300 (bıçak $1500, AWP $100), raund kazanma $3250, kaybetme $1400+.
+- **İade:** Yanlışlıkla aldığın eşyayı satın alma menüsünün altındaki "İade et" butonlarıyla (bilgisayarda menüdeyken
+  Z tuşu son alımı iade eder) tam fiyatına geri verebilirsin. Sadece bu raund aldıkların; satın alma süresi bitmeden ve
+  satın alma alanındayken. Ateş ettiğin silah, attığın bomba, hasar almış zırh ve elden çıkardığın silah iade edilemez.
+  Silahı iade edince yerine aldığın eski silah hâlâ yerdeyse eline geri gelir; silaha taktığın eklentiler de iade edilir.
 - İlk 10 raundu alan takım maçı kazanır.
 
 ## Telefondan oynamak (Android / iOS)
@@ -150,7 +154,7 @@ Aynı link telefonda açılınca oyun dokunmatik kontrollere geçer. Telefonu ya
 | Sol tık / Sağ tık | Ateş / dürbün (AWP, Scout), kırmızı nokta ile nişan ya da bıçak saplama |
 | 1 2 3 4 5 | Ana silah, tabanca, bıçak, bombalar, C4 — Q: son silah, tekerlek: silah değiştir |
 | R / G | Şarjör değiştir / silahı yere at |
-| B | Satın alma menüsü (raund başında doğuş alanında) |
+| B | Satın alma menüsü (raund başında doğuş alanında) · menüdeyken Z: son alımı iade et |
 | E (basılı) | Bomba kur (T) / imha et (CT) |
 | Tab | Skor tablosu |
 | Y / U | Sohbet / takım sohbeti |

@@ -78,7 +78,7 @@ const httpServer = http.createServer((req, res) => {
 
 // ---------------------------------------------------------------- Yardımcılar
 const clients = new Map();
-let nextPlayerId = 1, nextItemId = 1, nextNadeId = 1;
+let nextPlayerId = 1, nextItemId = 1, nextNadeId = 1, nextWid = 1;
 
 const now = () => Date.now();
 const finite = (n) => typeof n === 'number' && Number.isFinite(n);
@@ -97,6 +97,7 @@ function youMsg(p) {
   return {
     t: 'you', team: p.team, alive: p.alive, hp: p.hp, armor: p.armor, helmet: p.helmet, kit: p.kit,
     money: p.money, primary: p.primary, secondary: p.secondary, nades: p.nades, att: p.att,
+    refunds: p.room ? p.room.refundList(p) : [],
   };
 }
 const sendYou = (p) => send(p, youMsg(p));
@@ -121,6 +122,7 @@ class Room {
     this.items = [];
     this.nades = [];
     this.nadeAcc = 0;
+    this.firedWids = new Set(); // ateş edilmiş silahlar (iade edilemez)
     this.msg = this.waitMsg();
   }
 
@@ -224,6 +226,8 @@ class Room {
     p.nades = { he: 0, flash: 0, smoke: 0 };
     p.armor = 0; p.helmet = false; p.kit = false;
     p.att = { 1: [], 2: [] };
+    p.wid = { 1: 0, 2: nextWid++ }; // her silahın kimliği var (varsayılan tabanca dahil)
+    p.buys = [];
   }
 
   owns(p, w) {
@@ -269,6 +273,7 @@ class Room {
     p.hp = 100;
     p.sid++;
     p.respawnAt = 0;
+    p.buys = [];
     if (this.dm) {
       // Ölüm maçında son alınan ana silah, zırh ve kask otomatik verilir
       this.resetInventory(p);
@@ -297,10 +302,15 @@ class Room {
 
   feetPos(p) { return [p.pos[0], r2(groundAt(this.map.boxes, p.pos[0], p.pos[2], p.pos[1]) + 0.02), p.pos[2]]; }
 
+  // Yere bırakılan silah kimliğini (wid) korur: iade sadece satın alınan silahın kendisi için yapılabilir
   dropItem(p, w, atFeet = false) {
-    this.items.push({ id: nextItemId++, w, p: atFeet ? this.feetPos(p) : this.dropPos(p), owner: p.id, t: now() });
+    const slot = WEAPONS[w].slot;
+    const it = { id: nextItemId++, w, wid: p.wid[slot] || 0, p: atFeet ? this.feetPos(p) : this.dropPos(p), owner: p.id, t: now() };
+    p.wid[slot] = 0;
+    this.items.push(it);
     if (this.items.length > 40) this.items.shift();
     this.broadcast(this.itemsMsg());
+    return it.id;
   }
 
   dropBombIfCarrier(p, thrown = false) {
@@ -373,6 +383,7 @@ class Room {
         this.dropItem(v, drop, true);
       }
     }
+    v.buys = [];
     this.dropBombIfCarrier(v);
     if (this.bomb?.planting?.id === v.id) this.bomb.planting = null;
     if (this.bomb?.defusing?.id === v.id) { this.bomb.defusing = null; this.broadcast(this.bombMsg()); }
@@ -410,6 +421,7 @@ class Room {
     this.bomb = null;
     this.items = [];
     this.nades = [];
+    this.firedWids.clear();
     this.msg = this.waitMsg();
     for (const p of this.players.values()) {
       p.money = MAX_MONEY;
@@ -456,6 +468,7 @@ class Room {
     this.roundStart = t;
     this.items = [];
     this.nades = [];
+    this.firedWids.clear();
     this.plantedThisRound = false;
     this.msg = `Raund ${this.round}`;
     const ts = this.teamOf('T'), cts = this.teamOf('CT');
@@ -544,35 +557,92 @@ class Room {
     let price = this.dm ? 0 : def.price;
     if (!this.dm && item === 'vesthelm' && p.armor >= 100 && !p.helmet) price = 350;
     if (p.money < price) return note('Yeterli paran yok');
+    const rec = { item, price };
     if (w) {
       if (w.nade) {
         if (p.nades[w.nade] >= w.max) return note('Daha fazla taşıyamazsın');
         p.nades[w.nade]++;
-      } else if (w.slot === 1) {
-        if (p.primary === item) return note('Bu silah zaten sende');
-        if (p.primary && !this.dm) this.dropItem(p, p.primary);
-        p.primary = item;
-        p.att[1] = [];
-        p.lastAtt = [];
-        p.lastPrimary = item;
-      } else if (w.slot === 2) {
-        if (p.secondary === item) return note('Bu silah zaten sende');
-        if (p.secondary && !this.dm) this.dropItem(p, p.secondary);
-        p.secondary = item;
-        p.att[2] = [];
+        rec.nade = w.nade;
+      } else if (w.slot === 1 || w.slot === 2) {
+        const s = w.slot, key = s === 1 ? 'primary' : 'secondary';
+        if (p[key] === item) return note('Bu silah zaten sende');
+        // Eski silah yere düşer; alım iade edilirse ve o silah hâlâ yerdeyse geri verilir
+        rec.slot = s;
+        rec.prevAtt = [...p.att[s]];
+        if (p[key] && !this.dm) rec.prevItem = this.dropItem(p, p[key]);
+        p[key] = item;
+        p.att[s] = [];
+        p.wid[s] = rec.wid = nextWid++;
+        if (s === 1) { p.lastAtt = []; p.lastPrimary = item; }
       } else return;
     } else if (item === 'vest') {
       if (p.armor >= 100) return note('Zaten tam zırhın var');
+      rec.prevArmor = p.armor; rec.prevHelmet = p.helmet;
       p.armor = 100;
     } else if (item === 'vesthelm') {
       if (p.armor >= 100 && p.helmet) return note('Zaten zırh ve kaskın var');
+      rec.prevArmor = p.armor; rec.prevHelmet = p.helmet;
       p.armor = 100; p.helmet = true;
     } else if (item === 'kit') {
       if (p.kit) return note('Zaten imha kitin var');
       p.kit = true;
     }
     p.money -= price;
+    if (!this.dm) p.buys.push(rec);
     send(p, { t: 'bought', item });
+    sendYou(p);
+  }
+
+  // ---------------- İade: bu raund alınan eşya, satın alma süresi ve alanı içinde tam fiyatına geri verilir.
+  // Ateş edilen silah, atılan bomba, hasar alan zırh ve elden çıkan silah iade edilemez.
+  refundable(p, r) {
+    if (r.att) return p.wid[r.slot] === r.wid && p.att[r.slot].includes(r.att) && !this.firedWids.has(r.wid);
+    if (r.slot) return p.wid[r.slot] === r.wid && !this.firedWids.has(r.wid);
+    if (r.nade) return p.nades[r.nade] > 0;
+    if (r.item === 'vest' || r.item === 'vesthelm') {
+      // Zırh alımları sırayla geri alınır (önce kask yükseltmesi, sonra yelek)
+      const last = p.buys.findLast((x) => x.item === 'vest' || x.item === 'vesthelm');
+      return r === last && p.armor >= 100 && (r.item === 'vest' || p.helmet);
+    }
+    if (r.item === 'kit') return p.kit;
+    return false;
+  }
+
+  refundList(p) {
+    if (this.dm || !p.buys) return [];
+    return p.buys.filter((r) => this.refundable(p, r)).map((r) => ({ item: r.item, price: r.price, slot: r.slot || 0 }));
+  }
+
+  refund(p, item, slot) {
+    const note = (text) => send(p, { t: 'note', text });
+    if (this.dm) return;
+    if (!this.canBuy(p)) return note('İade sadece satın alma süresinde ve satın alma alanında yapılabilir');
+    const i = p.buys.findLastIndex((r) => r.item === item && (!r.att || r.slot === slot) && this.refundable(p, r));
+    if (i < 0) return note('Bu eşya iade edilemez (kullanıldı ya da artık sende değil)');
+    const r = p.buys[i];
+    p.buys.splice(i, 1);
+    let total = r.price;
+    if (r.att) {
+      p.att[r.slot] = p.att[r.slot].filter((a) => a !== r.att);
+      if (r.slot === 1) p.lastAtt = [...p.att[1]];
+    } else if (r.slot) {
+      // Bu silaha bu raund takılan eklentiler de iade edilir
+      for (let k = p.buys.length - 1; k >= 0; k--) {
+        const a = p.buys[k];
+        if (a.att && a.slot === r.slot && this.refundable(p, a)) { total += a.price; p.buys.splice(k, 1); }
+      }
+      const key = r.slot === 1 ? 'primary' : 'secondary';
+      const old = r.prevItem ? this.items.find((it) => it.id === r.prevItem) : null;
+      if (old) { this.items.splice(this.items.indexOf(old), 1); this.broadcast(this.itemsMsg()); }
+      p[key] = old ? old.w : null;
+      p.att[r.slot] = old ? [...r.prevAtt] : [];
+      p.wid[r.slot] = old ? old.wid : 0;
+      if (r.slot === 1) { p.lastPrimary = p.primary; p.lastAtt = [...p.att[1]]; }
+    } else if (r.nade) p.nades[r.nade]--;
+    else if (r.item === 'kit') p.kit = false;
+    else { p.armor = r.prevArmor; p.helmet = r.prevHelmet; }
+    addMoney(p, total);
+    send(p, { t: 'refunded', item, money: total });
     sendYou(p);
   }
 
@@ -593,6 +663,7 @@ class Room {
     p.money -= price;
     p.att[slot].push(att);
     if (slot === 1) p.lastAtt = [...p.att[1]];
+    if (!this.dm) p.buys.push({ item: 'att_' + att, att, slot, wid: p.wid[slot], price });
     send(p, { t: 'bought', item: 'att_' + att });
     sendYou(p);
   }
@@ -623,6 +694,11 @@ class Room {
         if (t - (p.lastShot[m.w] || 0) < rate) return;
         p.lastShot[m.w] = t;
         p.protectUntil = 0; // ateş eden oyuncunun doğuş koruması biter
+        const wid = !this.dm && (w.slot === 1 || w.slot === 2) ? p.wid[w.slot] : 0;
+        if (wid && !this.firedWids.has(wid)) {
+          this.firedWids.add(wid);
+          if (p.buys.some((r) => r.wid === wid)) sendYou(p); // iade listesi değişti
+        }
         const o = vec3(m.o), e = vec3(m.e);
         if (!o || !e) return;
         let blood = false;
@@ -651,6 +727,9 @@ class Room {
         if (sp > 30) for (let i = 0; i < 3; i++) v[i] *= 30 / sp;
         p.nades[type]--;
         p.protectUntil = 0;
+        // Elde kalan bomba sayısından fazla iade kaydı tutulmaz
+        let extra = p.buys.filter((r) => r.nade === type).length - p.nades[type];
+        for (let k = p.buys.length - 1; k >= 0 && extra > 0; k--) if (p.buys[k].nade === type) { p.buys.splice(k, 1); extra--; }
         const n = { id: nextNadeId++, owner: p.id, cid: m.cid, type, p: [...o], v: [...v], steps: 0, fuseSteps: Math.round(NADE_FUSE[type] / NADE_DT) };
         this.nades.push(n);
         this.broadcast({ t: 'nade', id: n.id, owner: p.id, type, o, v }, p);
@@ -661,6 +740,10 @@ class Room {
       case 'buy':
         if (typeof m.item === 'string' && m.item.startsWith('att_')) { this.buyAttachment(p, m.item.slice(4), m.slot === 2 ? 2 : 1); break; }
         if (typeof m.item === 'string') this.buy(p, m.item);
+        break;
+
+      case 'refund':
+        if (typeof m.item === 'string') this.refund(p, m.item, m.slot === 2 ? 2 : 1);
         break;
 
       case 'drop': {
@@ -826,8 +909,8 @@ class Room {
         if (!p.alive) continue;
         if (it.owner === p.id && t - it.t < 1500) continue;
         if (dist2(p.pos, it.p) > 1.1 || Math.abs(p.pos[1] - it.p[1]) > 1.5) continue;
-        if (w.slot === 1 && !p.primary) { p.primary = it.w; p.att[1] = []; }
-        else if (w.slot === 2 && !p.secondary) { p.secondary = it.w; p.att[2] = []; }
+        if (w.slot === 1 && !p.primary) { p.primary = it.w; p.att[1] = []; p.wid[1] = it.wid || 0; }
+        else if (w.slot === 2 && !p.secondary) { p.secondary = it.w; p.att[2] = []; p.wid[2] = it.wid || 0; }
         else continue;
         this.items.splice(i, 1);
         sendYou(p);
@@ -934,6 +1017,7 @@ wss.on('connection', (ws) => {
     id: nextPlayerId++, ws, name: 'Oyuncu', team: 'SPEC', room: null, alive: false,
     hp: 100, armor: 0, helmet: false, kit: false, money: START_MONEY,
     primary: null, secondary: null, lastPrimary: null, att: { 1: [], 2: [] }, lastAtt: [], nades: { he: 0, flash: 0, smoke: 0 },
+    wid: { 1: 0, 2: 0 }, buys: [],
     pos: [0, 0, 0], yaw: 0, pitch: 0, crouch: 0, weapon: 'knife',
     kills: 0, deaths: 0, sid: 0, respawnAt: 0, protectUntil: 0, lastShot: {}, ping: 0,
   };
