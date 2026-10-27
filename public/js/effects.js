@@ -60,7 +60,15 @@ export class Effects {
     this.lightT = 0; this.lightLife = 1; this.lightMax = 0;
     this.nades = [];
     this.tmp = new THREE.Vector3();
+    this.hdr = 1;
   }
+
+  // Işık parlaması (bloom) açıkken alev, kıvılcım ve mermi izleri daha parlak çizilir ki parlasınlar
+  setHDR(k) {
+    this.hdr = k;
+    this.tracerMat.color.setHex(0xffe9a0).multiplyScalar(k);
+  }
+  glow(s, k = 1) { s.material.color.multiplyScalar(1 + (this.hdr - 1) * k); return s; }
 
   sprite(tex, color, pos, scale, opacity = 1, additive = false) {
     const m = new THREE.SpriteMaterial({ map: tex, color, transparent: true, opacity, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending });
@@ -109,7 +117,7 @@ export class Effects {
       const vel = n.clone().multiplyScalar(1.2 + Math.random()).add(new THREE.Vector3((Math.random() - 0.5) * 0.8, Math.random() * 0.6, (Math.random() - 0.5) * 0.8));
       this.add(s, 0.5, (f, dt) => { s.position.addScaledVector(vel, dt); vel.y -= 2 * dt; s.scale.setScalar(0.12 + f * 0.4); s.material.opacity = 0.7 * (1 - f); });
     }
-    const sp = this.sprite(this.tex.soft, 0xffd080, this.tmp.copy(p).addScaledVector(n, 0.03), 0.18, 1, true);
+    const sp = this.glow(this.sprite(this.tex.soft, 0xffd080, this.tmp.copy(p).addScaledVector(n, 0.03), 0.18, 1, true), 0.6);
     this.add(sp, 0.06, (f) => { sp.material.opacity = 1 - f; });
   }
 
@@ -122,7 +130,7 @@ export class Effects {
   }
 
   muzzle(pos) {
-    const s = this.sprite(FLASH_TEX, 0xffffff, pos, 0.45 + Math.random() * 0.2, 1, true);
+    const s = this.glow(this.sprite(FLASH_TEX, 0xffffff, pos, 0.45 + Math.random() * 0.2, 1, true));
     s.material.rotation = Math.random() * Math.PI;
     this.add(s, 0.05, null);
     this.pulse(pos, 0xffb060, 22, 0.06);
@@ -130,7 +138,7 @@ export class Effects {
 
   explosion(pos, big = false) {
     const k = big ? 2.2 : 1;
-    const fire = this.sprite(this.tex.fire, 0xffffff, this.tmp.copy(pos).setY(pos.y + 0.6 * k), 1, 1, true);
+    const fire = this.glow(this.sprite(this.tex.fire, 0xffffff, this.tmp.copy(pos).setY(pos.y + 0.6 * k), 1, 1, true));
     this.add(fire, 0.55 * k, (f) => { fire.scale.setScalar((1 + f * 7) * k); fire.material.opacity = 1 - f; });
     for (let i = 0; i < 10 * k; i++) {
       const s = this.sprite(this.tex.smoke, 0x3a3530, pos, 1.5, 0.0);
@@ -147,7 +155,7 @@ export class Effects {
   }
 
   flashPop(pos) {
-    const s = this.sprite(this.tex.soft, 0xffffff, pos, 0.5, 1, true);
+    const s = this.glow(this.sprite(this.tex.soft, 0xffffff, pos, 0.5, 1, true));
     this.add(s, 0.3, (f) => { s.scale.setScalar(0.5 + f * 6); s.material.opacity = 1 - f; });
     this.pulse(pos, 0xffffff, 800, 0.2);
   }

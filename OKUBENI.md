@@ -75,11 +75,31 @@ Satın alma menüsünün 5. sütunu (**Eklentiler**). Elindeki silaha takılır 
 
 Ölüm maçlarında eklentiler de bedava ve yeniden doğunca silahla birlikte geri gelir.
 
+## Ayarlar
+
+Ana menüde sağ üstteki **⚙ Ayarlar** butonu ya da oyunda Esc / ☰ → **Ayarlar**. Ayarlar cihazda saklanır ve
+hemen uygulanır.
+
+| Sekme | İçerik |
+| --- | --- |
+| **Nişangah** | Şekil (Artı, T, Çarpı, Daire, Nokta), renk (hazır renkler ya da istediğin renk), uzunluk, kalınlık, ortadaki boşluk, görünürlük, orta nokta, siyah kenarlık ve "koşarken / ateş ederken açılsın". Önizlemede çöl, kar ve karanlık zemin denenebilir. |
+| **Görüntü** | Grafik kalitesi, görüş alanı (FOV), parlaklık, FPS göster |
+| **Kontrol ve ses** | Fare / bakış hassasiyeti, ses düzeyi, fareyi dikeyde ters çevirme |
+| **Telefon** | Butonları düzenle, jiroskop ayarları (sadece telefonda görünür) |
+
 ## Grafik ve performans
 
-Menü (Esc / ☰) → **Grafik kalitesi**: Otomatik (önerilen), Düşük, Orta, Yüksek. Otomatik modda kare hızı
-55'in altına düşerse çözünürlük kademeli düşürülür, gerekirse gölgeler kapatılır (60 FPS hedefi).
-**FPS göster** ile ekranın altında kare hızı görünür.
+Ayarlar → Görüntü → **Grafik kalitesi**:
+
+| Kalite | Ne açık |
+| --- | --- |
+| **Otomatik** (önerilen) | Bilgisayarda Yüksek, telefonda Orta ile başlar. Kare hızı 55'in altına düşerse önce çözünürlük, sonra son işlem efektleri, en son gölgeler azaltılır (60 FPS hedefi). |
+| **Düşük** | Gölge yok, düşük çözünürlük |
+| **Orta** | Gölgeler, ortam yansıması, duvar ve sandık diplerinde yumuşak gölgelenme |
+| **Yüksek** | Keskin, yumuşak kenarlı gölgeler; ışık parlaması (namlu alevi, patlamalar, neon şeritler); haritaya göre renk düzenleme; kenar yumuşatma |
+| **Ultra** | Yüksek + ekran uzayı ortam gölgelendirmesi (köşeler ve nesne dipleri kararır) ve daha yüksek çözünürlük. Güçlü ekran kartı gerekir. |
+
+Son işlem efektleri `public/js/post.js` içinde (three.js eklentileri sunucuda `/three/addons/` adresinden verilir).
 
 ## Klasik mod kuralları
 
@@ -100,9 +120,9 @@ Aynı link telefonda açılınca oyun dokunmatik kontrollere geçer. Telefonu ya
 - Üst sağ: $ (satın al), SOHBET, SKOR, ☰ (menü / takım değiştir)
 - Android'de oyun tam ekran açılır. iPhone'da tam ekran için Safari'de **Paylaş → Ana Ekrana Ekle** yap, oradan aç.
 - iPhone'un yan tarafındaki sessiz düğmesi açıksa oyun sesleri duyulmaz.
-- **Butonları düzenle:** ☰ → "Butonları düzenle". Butonları (joystick dahil) sürükleyerek taşı, seçili butonun
+- **Butonları düzenle:** ☰ → Ayarlar → Telefon → "Butonları düzenle". Butonları (joystick dahil) sürükleyerek taşı, seçili butonun
   ya da tüm butonların boyutunu ayarla, "Bitti" de. Düzen telefonda saklanır; "Sıfırla" ile varsayılana döner.
-- **Jiroskop:** ☰ → "Jiroskop ile nişan al". Telefonu çevirerek nişan alırsın (parmakla bakış da çalışmaya devam eder).
+- **Jiroskop:** ☰ → Ayarlar → Telefon → "Jiroskop ile nişan al". Telefonu çevirerek nişan alırsın (parmakla bakış da çalışmaya devam eder).
   Hassasiyet ayarlanabilir; yön ters geliyorsa "Yatayı / Dikeyi ters çevir". iPhone'da ilk açışta hareket izni sorulur.
 
 ## Uygulamalar (Android APK ve Windows)

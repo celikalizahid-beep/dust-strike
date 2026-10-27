@@ -8,6 +8,7 @@ import { createPlayerModel, createWeaponModel, Viewmodel, makeNameSprite } from 
 import * as sfx from './audio.js';
 import { Effects } from './effects.js';
 import { HUD } from './hud.js';
+import { PostFX } from './post.js';
 import { IS_TOUCH, TouchControls, goFullscreen, Gyro } from './touch.js';
 
 let MAP = buildMap('kum');
@@ -16,25 +17,39 @@ const TXT = IS_TOUCH
   ? { buyDM: 'Silahlar bedava: $ butonu ile istediğin zaman al', buy: 'Satın almak için $ butonu', plant: 'Bombayı kurmak için KUR butonunu basılı tut', defuse: 'İmha etmek için İMHA butonunu basılı tut', bombNote: 'C4 sende! A veya B bölgesine git, KUR butonunu basılı tut.', next: 'ATEŞ: sonraki oyuncu' }
   : { buyDM: 'Silahlar bedava: B ile istediğin zaman al', buy: 'Satın almak için B', plant: 'Bombayı kurmak için E tuşunu basılı tut', defuse: 'İmha etmek için E tuşunu basılı tut', bombNote: 'C4 sende! 5 tuşu ile seç, A veya B bölgesinde E tuşunu basılı tut.', next: 'sonraki oyuncu için tıkla' };
 const NADE_ORDER = ['he', 'flash', 'smoke'];
-const BASE_FOV = 74;
+// Varsayılan nişangah (ayarlardan değiştirilebilir)
+const CH_DEFAULT = { shape: 'cross', color: '#3cff52', len: 8, thick: 2, gap: 4, alpha: 1, dot: false, outline: true, dynamic: true };
 const SETTINGS = loadSettings();
+const baseFov = () => SETTINGS.fov;
 
 // ---------------------------------------------------------------- Grafik kalitesi
-// "Otomatik"te kare hızı 55'in altına düşerse çözünürlük, gerekirse gölgeler düşürülür (60 FPS hedefi)
+// "Otomatik"te kare hızı 55'in altına düşerse önce çözünürlük, sonra son işlem efektleri, en son gölgeler düşürülür (60 FPS hedefi).
+// Yüksek ve Ultra'da son işlem efektleri (post.js) açılır: MSAA, ışık parlaması, renk düzenleme; Ultra'da ortam gölgelendirmesi.
 const QUALITY = {
-  low: { ratio: 0.75, shadows: false, shadowSize: 1024, env: false, bump: false },
-  medium: { ratio: 1.0, shadows: true, shadowSize: 1024, env: true, bump: false },
-  high: { ratio: 1.5, shadows: true, shadowSize: 2048, env: true, bump: true },
+  low: { ratio: 0.75, shadows: false, shadowSize: 1024, shadowRadius: 1, env: false, bump: false, post: false },
+  medium: { ratio: 1.0, shadows: true, shadowSize: 1024, shadowRadius: 1, env: true, bump: false, post: false },
+  high: { ratio: 1.5, shadows: true, shadowSize: 4096, shadowRadius: 1.6, env: true, bump: true, post: true, bloom: true, msaa: 4 },
+  ultra: { ratio: 2.0, shadows: true, shadowSize: 4096, shadowRadius: 2, env: true, bump: true, post: true, bloom: true, msaa: 4, gtao: true },
+};
+const QUALITY_NOTE = {
+  auto: 'Bilgisayarda Yüksek, telefonda Orta ile başlar. Kare hızı düşerse çözünürlük, efektler ve gölgeler otomatik azaltılır.',
+  low: 'Gölge yok, düşük çözünürlük. Eski telefonlar ve zayıf bilgisayarlar için.',
+  medium: 'Gölgeler ve ortam yansıması açık. Çoğu telefon için uygun.',
+  high: 'Keskin ve yumuşak kenarlı gölgeler, ışık parlaması (namlu alevi, patlamalar, neon), renk düzenleme ve kenar yumuşatma.',
+  ultra: 'Yüksek + ortam gölgelendirmesi (köşeler ve nesne dipleri gerçekçi kararır) ve daha yüksek çözünürlük. Güçlü ekran kartı gerekir.',
 };
 const qualityLevel = () => (SETTINGS.quality === 'auto' ? (IS_TOUCH ? 'medium' : 'high') : SETTINGS.quality);
 const perf = { frames: 0, t0: 0, scale: 1, goodFor: 0, fps: 60 };
 function worldOpts() {
   const q = QUALITY[qualityLevel()];
-  return { renderer, shadows: q.shadows, shadowSize: q.shadowSize, env: q.env, bump: q.bump, lowSpec: IS_TOUCH };
+  const shadowSize = Math.min(q.shadowSize, renderer.capabilities.maxTextureSize);
+  return { renderer, shadows: q.shadows, shadowSize, shadowRadius: q.shadowRadius, env: q.env, bump: q.bump, lowSpec: IS_TOUCH, hdr: q.bloom ? 3 : 1 };
 }
 function applyPixelRatio() {
   const q = QUALITY[qualityLevel()];
-  renderer.setPixelRatio(Math.max(0.5, Math.min(window.devicePixelRatio, q.ratio) * perf.scale));
+  const r = Math.max(0.5, Math.min(window.devicePixelRatio, q.ratio) * perf.scale);
+  renderer.setPixelRatio(r);
+  if (post) post.setPixelRatio(r);
 }
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -51,18 +66,19 @@ function lerpAngle(a, b, f) {
 
 // ---------------------------------------------------------------- Görüntü
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+let post = null; // son işlem efektleri (Yüksek / Ultra kalite)
 // pixel oranı kalite sisteminde ayarlanır (applyPixelRatio)
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.05 * SETTINGS.bright;
 renderer.autoClear = false;
 document.getElementById('game').appendChild(renderer.domElement);
 const canvas = renderer.domElement;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.05, 600);
+const camera = new THREE.PerspectiveCamera(baseFov(), window.innerWidth / window.innerHeight, 0.05, 600);
 camera.rotation.order = 'YXZ';
 applyPixelRatio();
 let world = buildWorld(scene, MAP, worldOpts());
@@ -77,8 +93,19 @@ vmSun.position.set(0.6, 1, 0.8);
 vmScene.add(vmSun);
 const vm = new Viewmodel(vmScene);
 const hud = new HUD(MAP);
+hud.setCrosshairStyle(SETTINGS.ch);
 vmScene.environment = world.env ? world.env.texture : null;
 vmScene.environmentIntensity = 0.5;
+post = new PostFX(renderer, scene, camera, vmScene, vmCamera);
+// Son işlem efektlerini ve parlayan efektlerin gücünü seçili kaliteye göre ayarla
+function applyPostFX(q = QUALITY[qualityLevel()]) {
+  post.configure(q);
+  post.setGrade(world.grade);
+  const hdr = q.bloom ? 3 : 1;
+  fx.setHDR(hdr);
+  vm.flash.material.color.setScalar(hdr);
+  bombLedMat.color.setHex(0xff2020).multiplyScalar(hdr);
+}
 
 // Harita değişince eski dünyayı temizleyip yenisini kur
 function loadMap(id, force = false) {
@@ -89,6 +116,7 @@ function loadMap(id, force = false) {
   fx.boxes = MAP.boxes;
   hud.setMap(MAP);
   vmScene.environment = world.env ? world.env.texture : null;
+  post.setGrade(world.grade);
 }
 
 function adaptQuality(now) {
@@ -104,6 +132,7 @@ function adaptQuality(now) {
   if (perf.fps < 55) {
     perf.goodFor = 0;
     if (perf.scale > 0.6) { perf.scale = Math.max(0.6, perf.scale - 0.1); applyPixelRatio(); }
+    else if (post.active) applyPostFX(QUALITY.medium);
     else if (world.sun.castShadow) world.setShadows(false);
   } else if (perf.fps >= 58) {
     perf.goodFor += el;
@@ -116,15 +145,18 @@ function setQuality(level) {
   perf.scale = 1;
   applyPixelRatio();
   loadMap(MAP.id, true);
+  applyPostFX();
 }
 
 const bombModel = createWeaponModel('bomb');
 bombModel.scale.setScalar(1.5);
 bombModel.visible = false;
-const bombLed = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+const bombLedMat = new THREE.MeshBasicMaterial({ color: 0xff2020 });
+const bombLed = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), bombLedMat);
 bombLed.position.set(0.08, 0.06, -0.04);
 bombModel.add(bombLed);
 scene.add(bombModel);
+applyPostFX();
 
 // ---------------------------------------------------------------- Durum
 const S = {
@@ -145,7 +177,7 @@ const view = {
   blindT0: 0, blindDur: 0, blindK: 0, hurt: 0, nextBeep: 0, ledOff: 0, aimCheck: 0, useLabel: null,
   settings: SETTINGS,
 };
-let locked = false, chatOpen = false, chatTeam = false, menuOpen = false, pauseOpen = false, scoreShown = false, nadeCid = 0;
+let locked = false, chatOpen = false, chatTeam = false, menuOpen = false, pauseOpen = false, settingsOpen = false, scoreShown = false, nadeCid = 0;
 let touch = null;
 
 function setPause(v) {
@@ -162,7 +194,8 @@ function loadSettings() {
   try { s = JSON.parse(localStorage.getItem('dust-settings') || '{}'); } catch { /* yok say */ }
   return {
     sens: s.sens ?? 1.6, vol: s.vol ?? 0.6, name: s.name ?? '', mode: s.mode ?? 'classic', map: s.map ?? 'kum',
-    quality: s.quality ?? 'auto', showFps: s.showFps ?? false,
+    quality: s.quality ?? 'auto', showFps: s.showFps ?? false, fov: s.fov ?? 74, bright: s.bright ?? 1, invY: s.invY ?? false,
+    ch: { ...CH_DEFAULT, ...(s.ch || {}) },
     gyro: s.gyro ?? false, gyroSens: s.gyroSens ?? 1.0, gyroAxes: s.gyroAxes ?? 'spec',
     // Eksen düzeltmesiyle ters çevirme ayarlarının anlamı değişti: eski kayıtlarda bir kez sıfırlanır
     gyroInvX: s.gyroVer === 2 ? (s.gyroInvX ?? false) : false, gyroInvY: s.gyroVer === 2 ? (s.gyroInvY ?? false) : false, gyroVer: 2,
@@ -1087,7 +1120,7 @@ function updateHUD(now, dt) {
   const spread = S.alive ? currentSpread(w) : 0;
   const adsNow = S.alive && W.scope > 0 && w && !w.scope;
   // Her silahta nişangah (dürbünlü silahlarda dürbün kapalıyken de); açıklık o anki sapmayı gösterir
-  hud.crosshair(Math.min(48, 4 + spread * 420), S.alive ? W.scope === 0 : !!specR, !!(S.alive && w && (w.scope || spread > 0.03)));
+  hud.crosshair(Math.min(44, spread * 420), S.alive ? W.scope === 0 : !!specR, !!(S.alive && w && (w.scope || spread > 0.03)));
   hud.redDot(adsNow);
   hud.scope(S.alive && W.scope > 0 && !!w?.scope);
   view.hurt = Math.max(0, view.hurt - dt * 1.5);
@@ -1158,7 +1191,7 @@ function requestLock() {
 
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
-  if (locked) setPause(false);
+  if (locked) { closeSettings(false); setPause(false); }
   else {
     input.mouseL = input.mouseR = false;
     if (S.joined && !hud.buyOpen && !chatOpen && !menuOpen) setPause(true);
@@ -1180,9 +1213,9 @@ window.addEventListener('mouseup', (e) => {
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('mousemove', (e) => {
   if (!locked || !S.alive || hud.buyOpen) return;
-  const k = view.settings.sens * 0.0011 * (camera.fov / BASE_FOV);
+  const k = view.settings.sens * 0.0011 * (camera.fov / baseFov());
   P.yaw -= e.movementX * k;
-  P.pitch = clamp(P.pitch - e.movementY * k, -1.55, 1.55);
+  P.pitch = clamp(P.pitch - e.movementY * k * (SETTINGS.invY ? -1 : 1), -1.55, 1.55);
   vm.look(e.movementX, e.movementY);
 });
 window.addEventListener('wheel', (e) => { if (locked && S.alive) cycleWeapon(e.deltaY > 0 ? 1 : -1); }, { passive: true });
@@ -1194,6 +1227,7 @@ function digitOf(code) {
 }
 
 window.addEventListener('keydown', (e) => {
+  if (settingsOpen) { if (e.code === 'Escape') closeSettings(); return; }
   if (document.activeElement === nameInput) return;
   if (chatOpen) {
     if (e.code === 'Enter' || e.key === 'Enter') {
@@ -1298,16 +1332,85 @@ function closeTeamMenu() {
   requestLock();
 }
 
-const sensEl = document.getElementById('sens'), volEl = document.getElementById('vol');
-sensEl.value = view.settings.sens;
-volEl.value = view.settings.vol;
-document.getElementById('sensVal').textContent = Number(view.settings.sens).toFixed(1);
-sensEl.addEventListener('input', () => {
-  view.settings.sens = Number(sensEl.value);
-  document.getElementById('sensVal').textContent = view.settings.sens.toFixed(1);
-  saveSettings();
+// ---------------------------------------------------------------- Ayarlar paneli
+const $id = (id) => document.getElementById(id);
+function openSettings(tab) {
+  settingsOpen = true;
+  if (tab) showSettingsTab(tab);
+  $id('pause').classList.add('hidden');
+  $id('settings').classList.remove('hidden');
+  if (touch) touch.releaseAll();
+}
+// Kapatınca açıldığı yere döner: oyundaysa duraklatma menüsüne, değilse ana menüye
+function closeSettings(back = true) {
+  if (!settingsOpen) return;
+  settingsOpen = false;
+  $id('settings').classList.add('hidden');
+  if (back && pauseOpen) hud.showPause(true);
+}
+function showSettingsTab(tab) {
+  for (const b of document.querySelectorAll('#settings .tab')) b.classList.toggle('sel', b.dataset.tab === tab);
+  for (const p of document.querySelectorAll('#settings .setpage')) p.classList.toggle('hidden', p.dataset.page !== tab);
+}
+for (const b of document.querySelectorAll('#settings .tab')) b.addEventListener('click', () => showSettingsTab(b.dataset.tab));
+$id('menuSettings').addEventListener('click', () => openSettings());
+$id('pauseSettings').addEventListener('click', () => openSettings());
+$id('setClose').addEventListener('click', () => closeSettings());
+$id('setDone').addEventListener('click', () => closeSettings());
+$id('settings').addEventListener('mousedown', (e) => { if (e.target.id === 'settings') closeSettings(); });
+
+// Kaydırıcı + yanındaki değer yazısı
+function slider(id, get, set, fmt) {
+  const el = $id(id), lbl = $id(id + 'Val');
+  const show = () => { if (lbl) lbl.textContent = fmt(get()); };
+  el.value = get();
+  show();
+  el.addEventListener('input', () => { set(Number(el.value)); show(); saveSettings(); });
+  return { refresh() { el.value = get(); show(); } };
+}
+function checkbox(id, get, set) {
+  const el = $id(id);
+  el.checked = get();
+  el.addEventListener('change', () => { set(el.checked); saveSettings(); });
+  return { refresh() { el.checked = get(); } };
+}
+
+// Nişangah
+const CH = SETTINGS.ch;
+const chChanged = () => { hud.setCrosshairStyle(CH); syncChButtons(); saveSettings(); };
+function syncChButtons() {
+  for (const b of $id('chShape').children) b.classList.toggle('sel', b.dataset.v === CH.shape);
+  for (const b of $id('chColors').querySelectorAll('.sw')) b.classList.toggle('sel', b.dataset.c.toLowerCase() === CH.color.toLowerCase());
+  $id('chColor').value = CH.color;
+}
+for (const b of $id('chShape').children) b.addEventListener('click', () => { CH.shape = b.dataset.v; chChanged(); });
+for (const b of $id('chColors').querySelectorAll('.sw')) b.addEventListener('click', () => { CH.color = b.dataset.c; chChanged(); });
+$id('chColor').addEventListener('input', (e) => { CH.color = e.target.value; chChanged(); });
+for (const b of document.querySelectorAll('.chbg button')) b.addEventListener('click', () => { $id('chPrevBox').className = 'chprev ' + b.dataset.bg; });
+const chControls = [
+  slider('chLen', () => CH.len, (v) => { CH.len = v; chChanged(); }, (v) => v + ' px'),
+  slider('chThick', () => CH.thick, (v) => { CH.thick = v; chChanged(); }, (v) => v + ' px'),
+  slider('chGap', () => CH.gap, (v) => { CH.gap = v; chChanged(); }, (v) => v + ' px'),
+  slider('chAlpha', () => CH.alpha, (v) => { CH.alpha = v; chChanged(); }, (v) => Math.round(v * 100) + '%'),
+  checkbox('chDot', () => CH.dot, (v) => { CH.dot = v; chChanged(); }),
+  checkbox('chOutline', () => CH.outline, (v) => { CH.outline = v; chChanged(); }),
+  checkbox('chDyn', () => CH.dynamic, (v) => { CH.dynamic = v; chChanged(); }),
+];
+$id('chReset').addEventListener('click', () => {
+  Object.assign(CH, CH_DEFAULT);
+  for (const c of chControls) c.refresh();
+  chChanged();
 });
-volEl.addEventListener('input', () => { view.settings.vol = Number(volEl.value); sfx.setVolume(view.settings.vol); saveSettings(); });
+syncChButtons();
+
+// Kontrol ve ses
+slider('sens', () => view.settings.sens, (v) => { view.settings.sens = v; }, (v) => v.toFixed(1));
+slider('vol', () => view.settings.vol, (v) => { view.settings.vol = v; sfx.setVolume(v); }, (v) => Math.round(v * 100) + '%');
+checkbox('invY', () => SETTINGS.invY, (v) => { SETTINGS.invY = v; });
+
+// Görüntü
+slider('fov', () => SETTINGS.fov, (v) => { SETTINGS.fov = v; }, (v) => v + '°');
+slider('bright', () => SETTINGS.bright, (v) => { SETTINGS.bright = v; renderer.toneMappingExposure = 1.05 * v; }, (v) => Math.round(v * 100) + '%');
 document.getElementById('resumeBtn').addEventListener('click', () => {
   sfx.init();
   if (IS_TOUCH) { setPause(false); goFullscreen(); } else requestLock();
@@ -1334,17 +1437,18 @@ if (!/; wv\)/.test(navigator.userAgent) && !window.matchMedia('(display-mode: fu
   if (!IS_TOUCH && !/Electron/.test(navigator.userAgent)) document.getElementById('exeLink').classList.remove('hidden');
 }
 
-// Grafik ayarları
-const qualityEl = document.getElementById('quality'), fpsEl = document.getElementById('showFps');
+// Grafik kalitesi
+const qualityEl = $id('quality');
+const qualityNote = () => { $id('qualityNote').textContent = QUALITY_NOTE[SETTINGS.quality] || ''; };
 qualityEl.value = SETTINGS.quality;
-fpsEl.checked = SETTINGS.showFps;
-qualityEl.addEventListener('change', () => setQuality(qualityEl.value));
-fpsEl.addEventListener('change', () => { SETTINGS.showFps = fpsEl.checked; saveSettings(); hud.fps(SETTINGS.showFps ? perf.fps : null); });
+qualityNote();
+qualityEl.addEventListener('change', () => { setQuality(qualityEl.value); qualityNote(); });
+checkbox('showFps', () => SETTINGS.showFps, (v) => { SETTINGS.showFps = v; hud.fps(v ? perf.fps : null); });
 
 // Jiroskop: telefonu çevirerek nişan alma (Android ve iOS)
 const gyro = new Gyro((dYaw, dPitch) => {
   if (!S.alive || pauseOpen || menuOpen || hud.buyOpen || chatOpen) return;
-  const k = SETTINGS.gyroSens * (camera.fov / BASE_FOV);
+  const k = SETTINGS.gyroSens * (camera.fov / baseFov());
   P.yaw += dYaw * k * (SETTINGS.gyroInvX ? -1 : 1);
   P.pitch = clamp(P.pitch + dPitch * k * (SETTINGS.gyroInvY ? -1 : 1), -1.55, 1.55);
 });
@@ -1410,10 +1514,19 @@ calibBtn.addEventListener('click', async () => {
 // Buton düzenleyici
 document.getElementById('editBtns').addEventListener('click', () => {
   if (!touch) return;
+  // Ayarlar duraklatma menüsünden ya da ana menüden açılmış olabilir: bitince aynı yere dönülür
+  const wasPaused = pauseOpen, fromMenu = !$id('menu').classList.contains('hidden');
+  closeSettings(false);
   setPause(false);
+  if (fromMenu) hud.showMenu(false);
   pauseOpen = true; // düzenlerken oyun kontrolleri kapalı kalsın
   touch.startEdit();
-  touch.onEditDone = () => setPause(true);
+  touch.onEditDone = () => {
+    pauseOpen = wasPaused;
+    if (fromMenu) { hud.showMenu(true); touch.setVisible(S.joined); }
+    if (wasPaused) setPause(true);
+    openSettings('touch');
+  };
 });
 
 // ---------------------------------------------------------------- Dokunmatik (Android / iOS)
@@ -1448,7 +1561,7 @@ if (IS_TOUCH) {
   touch = new TouchControls({
     look: (dx, dy) => {
       if (!S.alive || hud.buyOpen || pauseOpen || menuOpen) return;
-      const k = view.settings.sens * 0.0032 * (camera.fov / BASE_FOV);
+      const k = view.settings.sens * 0.0032 * (camera.fov / baseFov());
       P.yaw -= dx * k;
       P.pitch = clamp(P.pitch - dy * k, -1.55, 1.55);
       vm.look(dx * 0.5, dy * 0.5);
@@ -1474,6 +1587,7 @@ window.addEventListener('resize', () => {
   camera.aspect = vmCamera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   vmCamera.updateProjectionMatrix();
+  post.setSize(window.innerWidth, window.innerHeight);
 });
 
 setInterval(() => send({ t: 'ping', ts: performance.now(), rtt: S.rtt }), 2000);
@@ -1503,7 +1617,7 @@ function frame(now) {
   const vmVisible = updateCamera(dt, now);
 
   const w = WEAPONS[W.cur];
-  const fov = S.alive && W.scope > 0 ? (w?.zoom ? w.zoom[W.scope - 1] : 46) : BASE_FOV;
+  const fov = S.alive && W.scope > 0 ? (w?.zoom ? w.zoom[W.scope - 1] : 46) : baseFov();
   vm.ads = S.alive && W.scope > 0 && !w?.scope;
   if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   const speed = S.alive ? Math.hypot(P.vel.x, P.vel.z) : specR ? specR.speed : 0;
@@ -1519,11 +1633,14 @@ function frame(now) {
   updateTouchUI(now);
   if (hud.buyOpen && !canBuyHere(now)) { hud.closeBuy(); if (!IS_TOUCH && !locked) setPause(true); }
 
-  renderer.clear();
-  renderer.render(scene, camera);
-  if (vmVisible) {
-    renderer.clearDepth();
-    renderer.render(vmScene, vmCamera);
+  if (post.active) post.render(dt, vmVisible);
+  else {
+    renderer.clear();
+    renderer.render(scene, camera);
+    if (vmVisible) {
+      renderer.clearDepth();
+      renderer.render(vmScene, vmCamera);
+    }
   }
 }
 
@@ -1531,4 +1648,4 @@ connect();
 requestAnimationFrame(frame);
 
 // Hata ayıklama için konsoldan erişim
-window.__dust = { S, P, W, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, get world() { return world; } };
+window.__dust = { S, P, W, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };

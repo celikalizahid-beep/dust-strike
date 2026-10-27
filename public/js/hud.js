@@ -6,6 +6,20 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const teamCls = (t) => (t === 'T' ? 'tcol' : t === 'CT' ? 'ctcol' : '');
 const RADAR_PPM = 2.6;
+const CH_SHAPES = ['cross', 't', 'x', 'circle', 'dot'];
+const OUTLINE = '0 0 0 1px rgba(0,0,0,.85)';
+
+function styleCrosshair(el, c) {
+  const st = el.style;
+  st.setProperty('--col', c.color);
+  st.setProperty('--len', c.len + 'px');
+  st.setProperty('--th', c.thick + 'px');
+  st.setProperty('--dot', Math.max(2, Math.round(c.thick * 1.5)) + 'px');
+  st.setProperty('--ol', c.outline ? OUTLINE : '0 0 0 0 transparent');
+  st.setProperty('--oli', c.outline ? 'inset ' + OUTLINE : '0 0 0 0 transparent');
+  st.opacity = c.alpha;
+  for (const s of CH_SHAPES) el.classList.toggle('shape-' + s, s === c.shape);
+}
 
 export class HUD {
   constructor(map) {
@@ -76,11 +90,21 @@ export class HUD {
     const html = (buy ? '<span class="buy">$ SATIN AL</span>' : '') + (bomb ? '<span class="bomb">C4</span>' : '') + (kit ? '<span>KİT</span>' : '') + (helmet ? '<span>KASK</span>' : '');
     this.set('icons', html, 'innerHTML');
   }
-  crosshair(gap, visible, dot = false) {
-    this.toggle('crosshair', 'dot', dot);
-    const g = Math.round(gap);
+  // Nişangah: spread o anki sapmanın piksel karşılığı (dinamik nişangahta boşluğa eklenir)
+  crosshair(spread, visible, forceDot = false) {
+    const c = this.ch;
+    this.toggle('crosshair', 'dot', c.dot || forceDot);
+    const g = Math.round(c.gap + (c.dynamic ? spread : 0));
     if (this.cache.gap !== g) { this.cache.gap = g; $('crosshair').style.setProperty('--gap', g + 'px'); }
     this.toggle('crosshair', 'hidden', !visible);
+  }
+  // Nişangah görünümü (şekil, renk, boyutlar); ayarlardaki önizleme de aynı şekilde çizilir
+  setCrosshairStyle(c) {
+    this.ch = c;
+    this.cache.gap = null;
+    styleCrosshair($('crosshair'), c);
+    const pv = $('chPreview');
+    if (pv) { styleCrosshair(pv, c); pv.classList.toggle('dot', c.dot); pv.style.setProperty('--gap', c.gap + 'px'); }
   }
   flash(op) { const v = op.toFixed(3); if (this.cache.flash !== v) { this.cache.flash = v; $('flash').style.opacity = v; } }
   hurt(op) { const v = op.toFixed(3); if (this.cache.hurt !== v) { this.cache.hurt = v; $('hurt').style.opacity = v; } }

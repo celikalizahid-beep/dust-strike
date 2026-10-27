@@ -47,14 +47,24 @@
   #chatlog div { margin-top: 2px; text-shadow: 0 0 3px #000, 0 0 3px #000; transition: opacity .6s; }
   #chatlog .sys { color: #b6e27c; }
   #chatinput { pointer-events: auto; width: 100%; margin-top: 6px; padding: 6px 8px; background: rgba(0,0,0,.7); border: 1px solid var(--line); color: #fff; font: inherit; outline: none; border-radius: 3px; }
-  #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --gap: 5px; }
-  #crosshair i { position: absolute; background: #3cff52; box-shadow: 0 0 1px #000; }
-  #crosshair .l, #crosshair .r { width: 8px; height: 2px; top: -1px; }
-  #crosshair .t, #crosshair .b { width: 2px; height: 8px; left: -1px; }
-  #crosshair .l { right: var(--gap); } #crosshair .r { left: var(--gap); }
-  #crosshair .t { bottom: var(--gap); } #crosshair .b { top: var(--gap); }
-  #crosshair .c { display: none; width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; }
-  #crosshair.dot .c { display: block; }
+  /* Nişangah: şekil, renk ve boyutlar ayarlardan CSS değişkenleriyle gelir */
+  .xhair { position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+    --gap: 4px; --len: 8px; --th: 2px; --dot: 3px; --col: #3cff52; --ol: 0 0 0 1px rgba(0,0,0,.85); --oli: inset 0 0 0 1px rgba(0,0,0,.85); }
+  .xhair i { position: absolute; display: block; background: var(--col); box-shadow: var(--ol); }
+  .xhair .l, .xhair .r { width: var(--len); height: var(--th); top: calc(var(--th) / -2); }
+  .xhair .t, .xhair .b { width: var(--th); height: var(--len); left: calc(var(--th) / -2); }
+  .xhair .l { right: var(--gap); } .xhair .r { left: var(--gap); }
+  .xhair .t { bottom: var(--gap); } .xhair .b { top: var(--gap); }
+  .xhair .c { display: none; width: var(--dot); height: var(--dot); left: calc(var(--dot) / -2); top: calc(var(--dot) / -2); border-radius: 50%; }
+  .xhair .o { display: none; box-sizing: border-box; background: none; border: var(--th) solid var(--col); border-radius: 50%; box-shadow: var(--ol), var(--oli);
+    width: calc(var(--gap) * 2 + var(--len) + var(--th)); height: calc(var(--gap) * 2 + var(--len) + var(--th));
+    left: calc((var(--gap) + var(--len) / 2 + var(--th) / 2) * -1); top: calc((var(--gap) + var(--len) / 2 + var(--th) / 2) * -1); }
+  .xhair.dot .c { display: block; }
+  .xhair.shape-t .t { display: none; }
+  .xhair.shape-x { transform: rotate(45deg); }
+  .xhair.shape-circle .l, .xhair.shape-circle .r, .xhair.shape-circle .t, .xhair.shape-circle .b,
+  .xhair.shape-dot .l, .xhair.shape-dot .r, .xhair.shape-dot .t, .xhair.shape-dot .b { display: none; }
+  .xhair.shape-circle .o, .xhair.shape-dot .c { display: block; }
   #center { position: absolute; top: 24%; left: 0; right: 0; text-align: center; }
   #centerMain { font-size: 34px; font-weight: bold; color: #fff; letter-spacing: 1px; }
   #centerSub { font-size: 16px; color: #ddd; margin-top: 6px; }
@@ -101,7 +111,8 @@
   .subtitle { color: #b9a98a; margin: 4px 0 20px; font-size: 13px; letter-spacing: 1px; }
   label { display: block; margin: 12px 0 6px; font-size: 13px; color: #ccc; }
   input[type=text], #nameInput { width: 100%; padding: 10px 12px; margin-top: 6px; background: #0d0c0a; border: 1px solid var(--line); color: #fff; font: inherit; font-size: 16px; border-radius: 4px; outline: none; user-select: text; }
-  input[type=range] { width: 100%; }
+  input[type=range] { width: 100%; accent-color: #ffb228; }
+  input[type=checkbox] { accent-color: #ffb228; }
   button { font: inherit; cursor: pointer; border-radius: 4px; }
   .teams { display: flex; gap: 12px; margin-top: 18px; }
   .team { flex: 1; padding: 18px 10px; border: 2px solid; background: rgba(0,0,0,.4); color: #fff; text-align: center; transition: transform .1s, background .1s; }
@@ -157,6 +168,45 @@
   #buyFoot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; font-size: 13px; color: #aaa; }
   #buyMoney { color: #8fd18f; font-weight: bold; font-size: 18px; }
   #buyClose { width: auto; margin: 0; padding: 8px 18px; }
+
+  /* ---------- Ayarlar ---------- */
+  .panel { position: relative; }
+  .gear { position: absolute; top: 22px; right: 24px; padding: 7px 12px; font-size: 12px; color: var(--hud); background: rgba(255,178,40,.1); border: 1px solid var(--hud-dim); }
+  .gear:hover, .secondary:hover { background: rgba(255,178,40,.2); }
+  #settings .panel { width: 680px; padding-top: 20px; }
+  .sethead { display: flex; justify-content: space-between; align-items: center; }
+  .sethead h2 { margin: 0; }
+  .xbtn { width: 34px; height: 34px; padding: 0; font-size: 16px; color: #ddd; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.15); }
+  .tabs { display: flex; gap: 4px; margin: 14px 0 4px; border-bottom: 1px solid var(--line); }
+  .tab { padding: 9px 14px; font-size: 13px; color: #bbb; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
+  .tab.sel { color: var(--hud); border-bottom-color: var(--hud); }
+  .tab.tonly { display: none; }
+  body.touch .tab.tonly { display: block; }
+  .setpage label { margin-top: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+  .setnote { font-size: 11px; color: #9a8f7a; margin-top: 6px; line-height: 1.5; }
+  .chtop { display: flex; gap: 16px; margin-top: 12px; }
+  .chprev { position: relative; flex: 0 0 190px; height: 150px; border-radius: 4px; border: 1px solid var(--line); overflow: hidden;
+    background: linear-gradient(#7fa9d6 0%, #b9cfe3 38%, #c9a66e 38%, #b28c55 62%, #c3a272 62%, #a98a5c 100%); }
+  .chprev.dark { background: linear-gradient(#20242c 0%, #39404a 45%, #4a4e55 45%, #2b2e33 100%); }
+  .chprev.snow { background: linear-gradient(#c9d9e8 0%, #eef3f7 45%, #e6ecf2 45%, #cfd8e2 100%); }
+  .chbg { position: absolute; left: 6px; bottom: 6px; display: flex; gap: 4px; }
+  .chbg button { width: 18px; height: 18px; padding: 0; border: 1px solid rgba(0,0,0,.5); border-radius: 50%; }
+  .chopts { flex: 1; min-width: 0; }
+  .chopts label:first-child { margin-top: 0; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 62px; padding: 7px 6px 5px; font-size: 11px; color: #ccc;
+    background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.15); }
+  .seg button svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2.4; }
+  .seg button.sel { color: var(--hud); border-color: var(--hud); background: rgba(255,178,40,.12); }
+  .swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .sw { width: 28px; height: 28px; padding: 0; border: 2px solid rgba(255,255,255,.2); border-radius: 50%; }
+  .sw.sel { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,178,40,.8); }
+  .swatches input[type=color] { width: 40px; height: 30px; padding: 0 2px; background: #0d0c0a; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+  .checks { display: flex; flex-wrap: wrap; gap: 0 18px; }
+  .checks label.chk { margin-top: 10px; }
+  .setfoot { display: flex; gap: 10px; }
+  .setfoot .secondary { flex: 1; }
 
   /* ---------- Dokunmatik kontroller (telefon / tablet) ---------- */
   .touch-only { display: none; }
@@ -249,8 +299,13 @@
   body.touch #buyCols { grid-template-columns: repeat(2, 1fr); }
   body.touch .bitem { padding: 10px 8px; }
   body.touch #scoreboard table { font-size: 11px; }
+  body.touch .gear { top: 14px; right: 16px; }
+  body.touch #settings .panel { padding-top: 12px; }
+  body.touch .tab { padding: 7px 10px; font-size: 12px; }
+  body.touch .chprev { flex-basis: 140px; height: 120px; }
+  @media (max-width: 560px) { .chtop { flex-direction: column; } .chprev { flex-basis: auto; width: 100%; } .grid2 { grid-template-columns: 1fr; } }
 </style>
-<script type="importmap">{ "imports": { "three": "/three/three.module.js" } }</script>
+<script type="importmap">{ "imports": { "three": "/three/three.module.js", "three/addons/": "/three/addons/" } }</script>
 </head>
 <body>
 <div id="game"></div>
@@ -265,7 +320,7 @@
   </div>
   <div id="killfeed"></div>
   <div id="chat"><div id="chatlog"></div><input id="chatinput" class="hidden" maxlength="120" autocomplete="off"></div>
-  <div id="crosshair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i><i class="c"></i></div>
+  <div id="crosshair" class="xhair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i><i class="c"></i><i class="o"></i></div>
   <div id="reddot" class="hidden"></div>
   <div id="center"><div id="centerMain"></div><div id="centerSub"></div></div>
   <div id="hint"></div>
@@ -304,6 +359,7 @@
 <div id="menu" class="overlay">
   <div class="panel">
     <h1>DUST<span>STRIKE</span></h1>
+    <button class="gear" id="menuSettings">⚙ Ayarlar</button>
     <div class="subtitle">de_kum · CS 1.6 tarzı çevrimiçi FPS</div>
     <label>Oyuncu adın<input id="nameInput" maxlength="16" placeholder="Adını yaz" autocomplete="off"></label>
     <label>Oyun modu</label>
@@ -354,20 +410,92 @@
   <div class="panel small">
     <h2>Duraklatıldı</h2>
     <button id="resumeBtn">Oyuna dön</button>
-    <label>Fare hassasiyeti: <span id="sensVal"></span><input type="range" id="sens" min="0.2" max="5" step="0.1"></label>
-    <label>Ses düzeyi<input type="range" id="vol" min="0" max="1" step="0.05"></label>
-    <div class="row2">
+    <button id="pauseSettings" class="secondary">⚙ Ayarlar (nişangah, grafik, ses, kontroller)</button>
+    <button id="teamBtn" class="secondary">Takım / mod / harita değiştir (M)</button>
+    <div class="controls desktop-only">
+      <b>Tab</b><span>Skor tablosu</span>
+      <b>B</b><span>Satın al (Eklentiler: 5)</span>
+      <b>Sağ tık</b><span>Dürbün / kırmızı nokta ile nişan</span>
+      <b>Y / U</b><span>Sohbet / takım sohbeti</span>
+    </div>
+  </div>
+</div>
+
+<div id="settings" class="overlay hidden">
+  <div class="panel">
+    <div class="sethead"><h2>Ayarlar</h2><button id="setClose" class="xbtn" title="Kapat (Esc)">✕</button></div>
+    <div class="tabs">
+      <button class="tab sel" data-tab="xhair">Nişangah</button>
+      <button class="tab" data-tab="video">Görüntü</button>
+      <button class="tab" data-tab="game">Kontrol ve ses</button>
+      <button class="tab tonly" data-tab="touch">Telefon</button>
+    </div>
+
+    <div class="setpage" data-page="xhair">
+      <div class="chtop">
+        <div class="chprev" id="chPrevBox">
+          <div id="chPreview" class="xhair"><i class="l"></i><i class="r"></i><i class="t"></i><i class="b"></i><i class="c"></i><i class="o"></i></div>
+          <div class="chbg"><button data-bg="" title="Çöl" style="background:#c3a272"></button><button data-bg="snow" title="Kar" style="background:#e6ecf2"></button><button data-bg="dark" title="Karanlık" style="background:#2b2e33"></button></div>
+        </div>
+        <div class="chopts">
+          <label>Şekil</label>
+          <div class="seg" id="chShape">
+          <button data-v="cross"><svg viewBox="0 0 24 24"><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/></svg>Artı</button>
+          <button data-v="t"><svg viewBox="0 0 24 24"><path d="M12 15v7M2 12h7M15 12h7"/></svg>T</button>
+          <button data-v="x"><svg viewBox="0 0 24 24"><path d="M5 5l5 5M14 14l5 5M19 5l-5 5M10 14l-5 5"/></svg>Çarpı</button>
+          <button data-v="circle"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/></svg>Daire</button>
+          <button data-v="dot"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>Nokta</button>
+          </div>
+          <label>Renk</label>
+          <div class="swatches" id="chColors"><button class="sw" data-c="#3cff52" title="Yeşil" style="background:#3cff52"></button><button class="sw" data-c="#ffe14d" title="Sarı" style="background:#ffe14d"></button><button class="sw" data-c="#ff3b3b" title="Kırmızı" style="background:#ff3b3b"></button><button class="sw" data-c="#3ce8ff" title="Camgöbeği" style="background:#3ce8ff"></button><button class="sw" data-c="#ff4dd8" title="Pembe" style="background:#ff4dd8"></button><button class="sw" data-c="#ffffff" title="Beyaz" style="background:#ffffff"></button><input type="color" id="chColor" title="Özel renk"></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <label>Uzunluk: <span id="chLenVal"></span><input type="range" id="chLen" min="2" max="20" step="1"></label>
+        <label>Kalınlık: <span id="chThickVal"></span><input type="range" id="chThick" min="1" max="6" step="1"></label>
+        <label>Ortadaki boşluk: <span id="chGapVal"></span><input type="range" id="chGap" min="0" max="20" step="1"></label>
+        <label>Görünürlük: <span id="chAlphaVal"></span><input type="range" id="chAlpha" min="0.2" max="1" step="0.05"></label>
+      </div>
+      <div class="checks">
+        <label class="chk"><input type="checkbox" id="chDot"> Orta nokta</label>
+        <label class="chk"><input type="checkbox" id="chOutline"> Siyah kenarlık</label>
+        <label class="chk"><input type="checkbox" id="chDyn"> Koşarken ve ateş ederken açılsın</label>
+      </div>
+      <button id="chReset" class="secondary">Nişangahı varsayılana döndür</button>
+    </div>
+
+    <div class="setpage hidden" data-page="video">
       <label>Grafik kalitesi
         <select id="quality">
           <option value="auto">Otomatik (60 FPS hedefi)</option>
           <option value="low">Düşük (en hızlı)</option>
           <option value="medium">Orta</option>
-          <option value="high">Yüksek</option>
+          <option value="high">Yüksek (ışık parlaması, keskin gölgeler)</option>
+          <option value="ultra">Ultra (ortam gölgelendirmesi, güçlü bilgisayarlar için)</option>
         </select>
       </label>
-      <label class="chk"><input type="checkbox" id="showFps"> FPS göster</label>
+      <div class="setnote" id="qualityNote"></div>
+      <div class="grid2">
+        <label>Görüş alanı (FOV): <span id="fovVal"></span><input type="range" id="fov" min="60" max="95" step="1"></label>
+        <label>Parlaklık: <span id="brightVal"></span><input type="range" id="bright" min="0.6" max="1.6" step="0.05"></label>
+      </div>
+      <div class="checks">
+        <label class="chk"><input type="checkbox" id="showFps"> FPS göster</label>
+      </div>
     </div>
-    <div class="touch-only touchset">
+
+    <div class="setpage hidden" data-page="game">
+      <div class="grid2">
+        <label>Fare / bakış hassasiyeti: <span id="sensVal"></span><input type="range" id="sens" min="0.2" max="5" step="0.1"></label>
+        <label>Ses düzeyi: <span id="volVal"></span><input type="range" id="vol" min="0" max="1" step="0.05"></label>
+      </div>
+      <div class="checks">
+        <label class="chk desktop-only"><input type="checkbox" id="invY"> Fareyi dikeyde ters çevir</label>
+      </div>
+      <div class="setnote">Ayarlar bu cihazda saklanır ve hemen uygulanır.</div>
+    </div>
+
+    <div class="setpage hidden" data-page="touch">
       <button id="editBtns" class="secondary">Butonları düzenle (yer ve boyut)</button>
       <label class="chk"><input type="checkbox" id="gyro"> Jiroskop ile nişan al (telefonu çevirerek)</label>
       <label>Jiroskop hassasiyeti: <span id="gyroSensVal"></span><input type="range" id="gyroSens" min="0.2" max="3" step="0.1"></label>
@@ -378,13 +506,8 @@
       <button id="gyroCalib" class="secondary">Jiroskopu ayarla (kalibrasyon, 6 sn)</button>
       <div id="gyroNote" class="hint2"></div>
     </div>
-    <button id="teamBtn" class="secondary">Takım / mod / harita değiştir (M)</button>
-    <div class="controls desktop-only">
-      <b>Tab</b><span>Skor tablosu</span>
-      <b>B</b><span>Satın al (Eklentiler: 5)</span>
-      <b>Sağ tık</b><span>Dürbün / kırmızı nokta ile nişan</span>
-      <b>Y / U</b><span>Sohbet / takım sohbeti</span>
-    </div>
+
+    <div class="setfoot"><button id="setDone" class="secondary">Tamam</button></div>
   </div>
 </div>
 
