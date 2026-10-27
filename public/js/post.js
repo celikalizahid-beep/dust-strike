@@ -61,10 +61,16 @@ export class PostFX {
 
   get active() { return !!this.composer; }
 
+  // Efektler yarım hassasiyetli (HDR) ara belleğe çizer; ekran kartı desteklemiyorsa normal çizim kullanılır
+  get supported() {
+    const ext = this.renderer.extensions;
+    return ext.has('EXT_color_buffer_float') || ext.has('EXT_color_buffer_half_float');
+  }
+
   // q: kalite ayarı ({ post, bloom, gtao, msaa }); post kapalıysa normal (doğrudan) çizime dönülür
   configure(q) {
     this.dispose();
-    if (!q.post) return;
+    if (!q.post || !this.supported) return;
     const r = this.renderer;
     const size = r.getSize(new THREE.Vector2());
     const pr = r.getPixelRatio();
