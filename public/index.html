@@ -153,8 +153,9 @@
   #scoreboard tr.dead td { opacity: .45; }
   #scoreboard .hdr { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0; font-weight: bold; font-size: 16px; }
 
-  #buymenu .panel { width: 1040px; }
-  #buyCols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  #buymenu .panel { width: 1240px; }
+  #buyCols { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  @media (max-width: 1100px) { #buyCols { grid-template-columns: repeat(3, 1fr); } }
   #reddot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #ff2a1a; box-shadow: 0 0 6px #ff2a1a, 0 0 2px #fff; }
   .bcol { border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
   .bcol.active { border-color: var(--hud); background: rgba(255,178,40,.06); }
@@ -167,11 +168,15 @@
   .bitem.owned { border-color: #6dff6d55; }
   #buyFoot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; font-size: 13px; color: #aaa; }
   #buyMoney { color: #8fd18f; font-weight: bold; font-size: 18px; }
-  #buyRefund { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 10px; border: 1px dashed rgba(255,130,100,.5); border-radius: 4px; }
-  .rflbl { font-size: 12px; color: #ffb8a4; margin-right: 4px; }
-  .rfchip { padding: 6px 10px; font-size: 12px; color: #ffe0d6; background: rgba(255,90,60,.14); border: 1px solid rgba(255,130,100,.65); }
-  .rfchip:hover { background: rgba(255,90,60,.28); }
-  .rfchip b { color: #8fd18f; font-weight: normal; margin-left: 8px; }
+  /* İade sütunu */
+  .bcol.rfcol { border-color: rgba(255,130,100,.5); background: rgba(255,90,60,.04); }
+  .bcol.rfcol.active { border-color: #ff8a6a; background: rgba(255,90,60,.1); }
+  .rfcol h3 { color: #ff9a7a; }
+  .rfitem { border-color: rgba(255,130,100,.35); }
+  .rfitem:hover:not(:disabled) { border-color: #ff8a6a; background: rgba(255,90,60,.15); }
+  .rfitem small { color: #aaa; }
+  .rfempty { font-size: 11px; color: #aaa; line-height: 1.5; padding: 2px; }
+  .rfrule { font-size: 10px; color: #8a7f6c; line-height: 1.4; margin-top: 8px; }
   #buyClose { width: auto; margin: 0; padding: 8px 18px; }
 
   /* ---------- Ayarlar ---------- */
@@ -303,7 +308,6 @@
   body.touch #buymenu .panel, body.touch #scoreboard .panel { width: 100%; }
   body.touch #buyCols { grid-template-columns: repeat(2, 1fr); }
   body.touch .bitem { padding: 10px 8px; }
-  body.touch .rfchip { padding: 9px 12px; }
   body.touch #scoreboard table { font-size: 11px; }
   body.touch .gear { top: 14px; right: 16px; }
   body.touch #settings .panel { padding-top: 12px; }
@@ -358,8 +362,7 @@
   <div class="panel">
     <h2>Satın Alma Menüsü</h2>
     <div id="buyCols"></div>
-    <div id="buyRefund" class="hidden"></div>
-    <div id="buyFoot"><span class="desktop-only">Önce kategori numarası, sonra eşya numarası · Z: son alımı iade et · B / Esc: kapat</span><span id="buyMoney">$0</span><button id="buyClose" class="secondary">Kapat</button></div>
+    <div id="buyFoot"><span class="desktop-only">Önce kategori numarası, sonra eşya numarası · 6: iade · Z: son alımı iade et · B / Esc: kapat</span><span id="buyMoney">$0</span><button id="buyClose" class="secondary">Kapat</button></div>
   </div>
 </div>
 

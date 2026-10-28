@@ -566,10 +566,12 @@ class Room {
       } else if (w.slot === 1 || w.slot === 2) {
         const s = w.slot, key = s === 1 ? 'primary' : 'secondary';
         if (p[key] === item) return note('Bu silah zaten sende');
-        // Eski silah yere düşer; alım iade edilirse ve o silah hâlâ yerdeyse geri verilir
+        // Eski silah yere düşer; alım iade edilirse ve o silah hâlâ yerdeyse geri verilir.
+        // Ölüm maçında eski silah yere düşmez, iptal edilince doğrudan geri verilir.
         rec.slot = s;
         rec.prevAtt = [...p.att[s]];
-        if (p[key] && !this.dm) rec.prevItem = this.dropItem(p, p[key]);
+        if (p[key] && this.dm) { rec.prevW = p[key]; rec.prevWid = p.wid[s]; }
+        else if (p[key]) rec.prevItem = this.dropItem(p, p[key]);
         p[key] = item;
         p.att[s] = [];
         p.wid[s] = rec.wid = nextWid++;
@@ -588,13 +590,19 @@ class Room {
       p.kit = true;
     }
     p.money -= price;
-    if (!this.dm) p.buys.push(rec);
+    this.addBuy(p, rec);
     send(p, { t: 'bought', item });
     sendYou(p);
   }
 
   // ---------------- İade: bu raund alınan eşya, satın alma süresi ve alanı içinde tam fiyatına geri verilir.
   // Ateş edilen silah, atılan bomba, hasar alan zırh ve elden çıkan silah iade edilemez.
+  // Ölüm maçında eşyalar bedava: iade, alımı iptal edip önceki silahı geri verir.
+  addBuy(p, rec) {
+    p.buys.push(rec);
+    if (p.buys.length > 40) p.buys.shift(); // bedava alımlarda liste sınırsız büyümesin
+  }
+
   refundable(p, r) {
     if (r.att) return p.wid[r.slot] === r.wid && p.att[r.slot].includes(r.att) && !this.firedWids.has(r.wid);
     if (r.slot) return p.wid[r.slot] === r.wid && !this.firedWids.has(r.wid);
@@ -609,13 +617,12 @@ class Room {
   }
 
   refundList(p) {
-    if (this.dm || !p.buys) return [];
+    if (!p.buys) return [];
     return p.buys.filter((r) => this.refundable(p, r)).map((r) => ({ item: r.item, price: r.price, slot: r.slot || 0 }));
   }
 
   refund(p, item, slot) {
     const note = (text) => send(p, { t: 'note', text });
-    if (this.dm) return;
     if (!this.canBuy(p)) return note('İade sadece satın alma süresinde ve satın alma alanında yapılabilir');
     const i = p.buys.findLastIndex((r) => r.item === item && (!r.att || r.slot === slot) && this.refundable(p, r));
     if (i < 0) return note('Bu eşya iade edilemez (kullanıldı ya da artık sende değil)');
@@ -634,9 +641,10 @@ class Room {
       const key = r.slot === 1 ? 'primary' : 'secondary';
       const old = r.prevItem ? this.items.find((it) => it.id === r.prevItem) : null;
       if (old) { this.items.splice(this.items.indexOf(old), 1); this.broadcast(this.itemsMsg()); }
-      p[key] = old ? old.w : null;
-      p.att[r.slot] = old ? [...r.prevAtt] : [];
-      p.wid[r.slot] = old ? old.wid : 0;
+      const back = old ? { w: old.w, wid: old.wid } : r.prevW ? { w: r.prevW, wid: r.prevWid } : null;
+      p[key] = back ? back.w : null;
+      p.att[r.slot] = back ? [...r.prevAtt] : [];
+      p.wid[r.slot] = back ? back.wid : 0;
       if (r.slot === 1) { p.lastPrimary = p.primary; p.lastAtt = [...p.att[1]]; }
     } else if (r.nade) p.nades[r.nade]--;
     else if (r.item === 'kit') p.kit = false;
@@ -663,7 +671,7 @@ class Room {
     p.money -= price;
     p.att[slot].push(att);
     if (slot === 1) p.lastAtt = [...p.att[1]];
-    if (!this.dm) p.buys.push({ item: 'att_' + att, att, slot, wid: p.wid[slot], price });
+    this.addBuy(p, { item: 'att_' + att, att, slot, wid: p.wid[slot], price });
     send(p, { t: 'bought', item: 'att_' + att });
     sendYou(p);
   }

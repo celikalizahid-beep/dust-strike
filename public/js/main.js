@@ -295,7 +295,7 @@ function onMessage(m) {
     case 'refunded': {
       sfx.refund();
       const d = m.item.startsWith('att_') ? ATTACHMENTS[m.item.slice(4)] : WEAPONS[m.item] || ITEMS[m.item];
-      hud.note(`${d ? d.name : m.item} iade edildi (+$${m.money})`, 2000);
+      hud.note(m.money ? `${d ? d.name : m.item} iade edildi (+$${m.money})` : `${d ? d.name : m.item} iptal edildi`, 2000);
       break;
     }
     case 'leave': removeRemote(m.id); break;
@@ -1081,7 +1081,7 @@ function buyCtx() {
 }
 // Bu raund alınıp hâlâ iade edilebilen eşyalar (hasar alan zırh hemen listeden düşer)
 function refundsNow() {
-  if (!S.alive || isDM()) return [];
+  if (!S.alive) return [];
   return (S.refunds || []).filter((r) => !((r.item === 'vest' || r.item === 'vesthelm') && S.armor < 100));
 }
 function openBuy() {
