@@ -1,7 +1,7 @@
 // DUST STRIKE istemcisi: render döngüsü, girdi, hareket, silahlar ve ağ.
 import * as THREE from 'three';
 import { buildMap } from '../shared/map.js';
-import { WEAPONS, ATTACHMENTS, canAttach, magSize, attFromCode } from '../shared/weapons.js';
+import { WEAPONS, ITEMS, ATTACHMENTS, canAttach, magSize, attFromCode } from '../shared/weapons.js';
 import { movePlayer, boxHit, raycastWorld, rayAABB, STAND_H, CROUCH_H, STAND_EYE, CROUCH_EYE, JUMP_V, PLAYER_HW } from '../shared/physics.js';
 import { buildWorld } from './world.js';
 import { createPlayerModel, createWeaponModel, Viewmodel, makeNameSprite } from './models.js';
@@ -292,6 +292,12 @@ function onMessage(m) {
     case 'chat': hud.chat(m); sfx.chatBlip(); break;
     case 'note': hud.note(m.text); break;
     case 'bought': sfx.buy(); break;
+    case 'refunded': {
+      sfx.refund();
+      const d = m.item.startsWith('att_') ? ATTACHMENTS[m.item.slice(4)] : WEAPONS[m.item] || ITEMS[m.item];
+      hud.note(`${d ? d.name : m.item} iade edildi (+$${m.money})`, 2000);
+      break;
+    }
     case 'leave': removeRemote(m.id); break;
     case 'pong': S.rtt = Math.round(now - m.ts); break;
   }
@@ -446,6 +452,7 @@ function applyYou(m) {
   S.team = m.team; S.hp = m.hp; S.armor = m.armor; S.helmet = m.helmet; S.kit = m.kit; S.money = m.money;
   S.inv = { primary: m.primary, secondary: m.secondary, nades: { ...m.nades }, att: m.att || { 1: [], 2: [] } };
   S.alive = m.alive;
+  S.refunds = m.refunds || [];
   if (m.primary && m.primary !== prev.primary) {
     fillAmmo(m.primary);
     if (S.alive && wasAlive) switchWeapon(m.primary);
@@ -460,6 +467,11 @@ function applyYou(m) {
     const w = slot === 1 ? m.primary : m.secondary;
     if (!w || before.join() === after.join() || w !== (slot === 1 ? prev.primary : prev.secondary)) continue;
     if (after.includes('mag') && !before.includes('mag') && W.ammo[w]) W.ammo[w].mag = magSize(w, after);
+    // Uzun şarjör iade edildiyse fazla mermi yedeğe geri döner
+    if (!after.includes('mag') && before.includes('mag') && W.ammo[w]) {
+      const a = W.ammo[w], max = magSize(w, after);
+      if (a.mag > max) { a.res += a.mag - max; a.mag = max; }
+    }
     if (W.cur === w) vm.set(w, S.team, true, after);
   }
   if (S.alive && W.cur && !owns(W.cur)) switchWeapon(bestWeapon());
@@ -1062,9 +1074,15 @@ function attTarget() {
 function buyCtx() {
   return {
     team: S.team, money: S.money, inv: S.inv, armor: S.armor, helmet: S.helmet, kit: S.kit,
-    dm: isDM(), ffa: S.mode === 'ffa', ...attTarget(),
+    dm: isDM(), ffa: S.mode === 'ffa', ...attTarget(), refunds: refundsNow(),
     onBuy: (item) => send({ t: 'buy', item, slot: attTarget().attSlot }),
+    onRefund: (item, slot) => send({ t: 'refund', item, slot }),
   };
+}
+// Bu raund alınıp hâlâ iade edilebilen eşyalar (hasar alan zırh hemen listeden düşer)
+function refundsNow() {
+  if (!S.alive || isDM()) return [];
+  return (S.refunds || []).filter((r) => !((r.item === 'vest' || r.item === 'vesthelm') && S.armor < 100));
 }
 function openBuy() {
   if (!S.alive) return;
@@ -1253,6 +1271,11 @@ window.addEventListener('keydown', (e) => {
     const d = digitOf(e.code);
     if (d !== null) { hud.buyKey(d); e.preventDefault(); }
     else if (e.code === 'KeyB' || e.code === 'Escape') closeBuy();
+    else if (e.code === 'KeyZ' && !e.repeat) {
+      // Z: son alımı iade et
+      const r = refundsNow().at(-1);
+      if (r) send({ t: 'refund', item: r.item, slot: r.slot });
+    }
     else input.keys[e.code] = true;
     return;
   }
