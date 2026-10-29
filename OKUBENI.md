@@ -48,8 +48,9 @@ Menüden mod seçilir; üç mod aynı anda oynanabilir (her biri ayrı oda).
 | **Herkes Tek** | Herkes herkese karşı, takım yok. 10 dakika sonunda en çok leşi alan oyuncu kazanır. En fazla 32 kişi. |
 
 Ölüm maçı modlarında: silahlar bedava ve her yerde alınabilir (B / $), son aldığın ana silah ile zırh
-yeniden doğunca otomatik verilir, doğunca 2 saniye koruma vardır (ateş edince biter). Maç süresi
-`DM_TIME` ortam değişkeniyle (saniye) değiştirilebilir.
+yeniden doğunca otomatik verilir, doğunca 2 saniye koruma vardır (ateş edince biter). Yanlış silah
+alırsan satın alma menüsünün **6. İade** sütunundan alımı iptal edip önceki silahına (eklentileriyle) dönebilirsin.
+Maç süresi `DM_TIME` ortam değişkeniyle (saniye) değiştirilebilir.
 
 ## Haritalar
 
@@ -108,9 +109,9 @@ Son işlem efektleri `public/js/post.js` içinde (three.js eklentileri sunucuda 
 - T'lerden biri C4 taşır; A veya B bölgesine kurup 40 saniye korursa T kazanır.
 - CT'ler bombayı imha ederse (10 sn, kitle 5 sn) ya da süre biterse CT kazanır. Takımı yok eden de kazanır.
 - Para sistemi: başlangıç $800, leş $300 (bıçak $1500, AWP $100), raund kazanma $3250, kaybetme $1400+.
-- **İade:** Yanlışlıkla aldığın eşyayı satın alma menüsünün altındaki "İade et" butonlarıyla (bilgisayarda menüdeyken
-  Z tuşu son alımı iade eder) tam fiyatına geri verebilirsin. Sadece bu raund aldıkların; satın alma süresi bitmeden ve
-  satın alma alanındayken. Ateş ettiğin silah, attığın bomba, hasar almış zırh ve elden çıkardığın silah iade edilemez.
+- **İade:** Satın alma menüsünün son sütunu **6. İade**: bu raund aldıkların orada listelenir, tıklayınca tam fiyatına
+  geri verilir (klavyede 6 ve sıra numarası; Z son alımı iade eder). Sadece satın alma süresi bitmeden ve satın alma
+  alanındayken. Ateş ettiğin silah, attığın bomba, hasar almış zırh ve elden çıkardığın silah iade edilemez.
   Silahı iade edince yerine aldığın eski silah hâlâ yerdeyse eline geri gelir; silaha taktığın eklentiler de iade edilir.
 - İlk 10 raundu alan takım maçı kazanır.
 

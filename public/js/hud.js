@@ -234,32 +234,39 @@ export class HUD {
           }
           return `<button class="bitem ${have ? 'owned' : ''}" data-item="${it}" title="${d.desc || ''}" ${off ? 'disabled' : ''}><span><span class="k">${ii + 1}</span>${d.name}</span><span class="p">${have ? 'TAKILI' : price ? '$' + price : 'BEDAVA'}</span></button>`;
         }).join('') + '</div>';
-    }).join('');
+    }).join('') + this.refundColumn(ctx, cols.length);
     $('buyMoney').textContent = '$' + ctx.money;
-    for (const b of $('buyCols').querySelectorAll('.bitem')) b.onclick = () => ctx.onBuy(b.dataset.item);
-    this.renderRefunds(ctx);
-  }
-  // İade şeridi: bu raund alınıp hâlâ iade edilebilen eşyalar (her biri ayrı buton)
-  renderRefunds(ctx) {
+    for (const b of $('buyCols').querySelectorAll('.bitem[data-item]')) b.onclick = () => ctx.onBuy(b.dataset.item);
     const list = ctx.refunds || [];
-    const box = $('buyRefund');
-    box.classList.toggle('hidden', !list.length);
-    if (!list.length) { box.innerHTML = ''; return; }
-    box.innerHTML = '<span class="rflbl">Yanlışlıkla mı aldın? İade et:</span>' + list.map((r, i) => {
-      const d = this.itemDef(r.item);
-      const on = r.item.startsWith('att_') ? WEAPONS[r.slot === 2 ? ctx.inv.secondary : ctx.inv.primary] : null;
-      return `<button class="rfchip" data-i="${i}" title="Tam fiyatına geri al">↩ ${d.name}${on ? ` (${on.name})` : ''}<b>+$${r.price}</b></button>`;
-    }).join('');
-    for (const b of box.querySelectorAll('.rfchip')) {
-      const r = list[Number(b.dataset.i)];
+    for (const b of $('buyCols').querySelectorAll('.rfitem')) {
+      const r = list[Number(b.dataset.ri)];
       b.onclick = () => ctx.onRefund(r.item, r.slot);
     }
   }
+  // Son sütun "İade": bu raund alınıp hâlâ iade edilebilen eşyalar (her biri ayrı satır).
+  // Ölüm maçında eşyalar bedava olduğu için iade, alımı iptal edip önceki silahı geri verir.
+  refundColumn(ctx, ci) {
+    const list = ctx.refunds || [];
+    const rows = list.map((r, i) => {
+      const d = this.itemDef(r.item);
+      const on = r.item.startsWith('att_') ? WEAPONS[r.slot === 2 ? ctx.inv.secondary : ctx.inv.primary] : null;
+      return `<button class="bitem rfitem" data-ri="${i}" title="${r.price ? 'Tam fiyatına geri al' : 'Alımı iptal et'}"><span><span class="k">${i + 1}</span>${d.name}${on ? ` <small>(${on.name})</small>` : ''}</span><span class="p">${r.price ? '+$' + r.price : 'İPTAL'}</span></button>`;
+    }).join('');
+    const empty = `<div class="rfempty">${ctx.dm ? 'Yanlış silah mı aldın? Burada iptal edip önceki silahına dönebilirsin.' : 'Bu raund aldığın eşyalar burada görünür. Tıklayınca parası geri gelir.'}</div>`;
+    const rule = ctx.dm ? '' : '<div class="rfrule">Ateş edilen silah, atılan bomba ve hasar alan zırh iade edilemez.</div>';
+    return `<div class="bcol rfcol ${this.buyCat === ci ? 'active' : ''}"><h3>${ci + 1}. İade</h3>${rows || empty}${rule}</div>`;
+  }
+  // Klavye: önce sütun numarası, sonra satır numarası (son sütun iade)
   buyKey(n) {
     const cols = this.buyColumns(this.buyCtx);
     if (n === 0) { this.buyCat = null; this.renderBuy(); return; }
     if (this.buyCat === null) {
-      if (cols[n - 1]) { this.buyCat = n - 1; this.renderBuy(); }
+      if (cols[n - 1] || n === cols.length + 1) { this.buyCat = n - 1; this.renderBuy(); }
+    } else if (this.buyCat === cols.length) {
+      const r = (this.buyCtx.refunds || [])[n - 1];
+      if (r) this.buyCtx.onRefund(r.item, r.slot);
+      this.buyCat = null;
+      this.renderBuy();
     } else {
       const it = cols[this.buyCat].items[n - 1];
       if (it) this.buyCtx.onBuy(it);
