@@ -102,6 +102,10 @@ Ayarlar → Görüntü → **Grafik kalitesi**:
 
 Son işlem efektleri `public/js/post.js` içinde (three.js eklentileri sunucuda `/three/addons/` adresinden verilir).
 
+Silah modelleri (`public/js/models.js`): metal, ahşap ve plastik parçalar ayrı malzemeyle çizilir (metal ortamı
+yansıtır, ahşapta damar, yüzeylerde ince doku). Elindeki silahta kenarlar yuvarlatılmıştır ve arpacık, ray,
+kavisli şarjör, dürbün camı gibi ayrıntılar vardır; diğer oyuncuların silahları performans için sade tutulur.
+
 ## Klasik mod kuralları
 
 - İki takım: **Teröristler (T)** ve **Anti-Terör (CT)**. Her iki takımda en az 1 kişi olunca maç başlar;
