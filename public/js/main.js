@@ -4,7 +4,8 @@ import { buildMap } from '../shared/map.js';
 import { WEAPONS, ITEMS, ATTACHMENTS, canAttach, magSize, attFromCode } from '../shared/weapons.js';
 import { movePlayer, boxHit, raycastWorld, rayAABB, STAND_H, CROUCH_H, STAND_EYE, CROUCH_EYE, JUMP_V, PLAYER_HW } from '../shared/physics.js';
 import { buildWorld } from './world.js';
-import { createPlayerModel, createWeaponModel, Viewmodel, makeNameSprite } from './models.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createPlayerModel, createWeaponModel, Viewmodel, makeNameSprite, setWorldReflections } from './models.js';
 import * as sfx from './audio.js';
 import { Effects } from './effects.js';
 import { HUD } from './hud.js';
@@ -86,16 +87,31 @@ const fx = new Effects(scene, MAP.boxes);
 
 const vmScene = new THREE.Scene();
 const vmCamera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.01, 20);
-vmScene.add(new THREE.HemisphereLight(0xfff4e0, 0x8a7350, 3.2));
-vmScene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const vmSun = new THREE.DirectionalLight(0xfff2dc, 3.0);
+// Silah ışığı: üstten ana ışık, önden-soldan kenarları parlatan arka ışık; metaller ortamı yansıtır
+vmScene.add(new THREE.HemisphereLight(0xfff4e0, 0x8a7350, 1.8));
+vmScene.add(new THREE.AmbientLight(0xffffff, 0.25));
+const vmSun = new THREE.DirectionalLight(0xfff2dc, 2.6);
 vmSun.position.set(0.6, 1, 0.8);
 vmScene.add(vmSun);
+const vmRim = new THREE.DirectionalLight(0xdfe8ff, 1.4);
+vmRim.position.set(-0.7, 0.6, -1);
+vmScene.add(vmRim);
 const vm = new Viewmodel(vmScene);
 const hud = new HUD(MAP);
 hud.setCrosshairStyle(SETTINGS.ch);
-vmScene.environment = world.env ? world.env.texture : null;
-vmScene.environmentIntensity = 0.5;
+// Harita yansıması yoksa (düşük kalite) silah metalleri için küçük bir stüdyo ortamı kullanılır
+let roomEnv = null;
+function updateReflections() {
+  if (!world.env && !roomEnv) {
+    const pm = new THREE.PMREMGenerator(renderer);
+    roomEnv = pm.fromScene(new RoomEnvironment(), 0.04);
+    pm.dispose();
+  }
+  vmScene.environment = world.env ? world.env.texture : roomEnv.texture;
+  vmScene.environmentIntensity = world.env ? 1.0 : 0.6; // stüdyo ortamı daha parlak
+  setWorldReflections(!!world.env);
+}
+updateReflections();
 post = new PostFX(renderer, scene, camera, vmScene, vmCamera);
 // Son işlem efektlerini ve parlayan efektlerin gücünü seçili kaliteye göre ayarla
 function applyPostFX(q = QUALITY[qualityLevel()]) {
@@ -115,7 +131,7 @@ function loadMap(id, force = false) {
   world = buildWorld(scene, MAP, worldOpts());
   fx.boxes = MAP.boxes;
   hud.setMap(MAP);
-  vmScene.environment = world.env ? world.env.texture : null;
+  updateReflections();
   post.setGrade(world.grade);
 }
 
