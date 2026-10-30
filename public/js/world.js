@@ -2,6 +2,7 @@
 // ve ortam yansıması (IBL). Her harita kendi teması ile kurulur; harita değişince eski dünya temizlenir.
 import * as THREE from 'three';
 import { CELL } from '../shared/map.js';
+import { buildScenery } from './props.js';
 
 // ---------------------------------------------------------------- Doku yardımcıları
 function canvasTex(size, draw) {
@@ -61,7 +62,37 @@ const TEX = {
     stains(g, s, 16, 'rgba(70,45,20,0.16)');
     pixelNoise(g, s, 26);
   }),
-  plaster: (base) => canvasTex(512, (g, s) => {
+  // Büyük kesme kumtaşı bloklar: renk farkı, yontulmuş köşeler, ince tortu çizgileri (dikişsiz tekrarlar)
+  sandstone: (base) => canvasTex(512, (g, s) => {
+    g.fillStyle = rgb(base, 0.6); g.fillRect(0, 0, s, s);
+    const rows = 7, rh = s / rows;
+    for (let r = 0; r < rows; r++) {
+      let x = -Math.random() * 80;
+      while (x < s) {
+        const bw = 70 + Math.random() * 110, l = 0.84 + Math.random() * 0.24, c = 4 + Math.random() * 6;
+        const draw = (sx) => {
+          const x0 = x + sx + 3, y0 = r * rh + 3, w = bw - 6, hh = rh - 6;
+          const gr = g.createLinearGradient(0, y0, 0, y0 + hh);
+          gr.addColorStop(0, rgb(base, l * 1.06)); gr.addColorStop(1, rgb(base, l * 0.9));
+          g.fillStyle = gr;
+          g.beginPath();
+          g.moveTo(x0 + c, y0); g.lineTo(x0 + w - c * 0.5, y0); g.lineTo(x0 + w, y0 + c); g.lineTo(x0 + w, y0 + hh - c * 0.6);
+          g.lineTo(x0 + w - c, y0 + hh); g.lineTo(x0 + c * 0.4, y0 + hh); g.lineTo(x0, y0 + hh - c); g.lineTo(x0, y0 + c * 0.5);
+          g.closePath(); g.fill();
+          g.strokeStyle = 'rgba(90,60,30,0.1)'; g.lineWidth = 1;
+          for (let k = 0; k < 3; k++) { const yy = y0 + ((k + 0.5) / 3) * hh; g.beginPath(); g.moveTo(x0, yy); g.lineTo(x0 + w, yy + 3); g.stroke(); }
+          g.fillStyle = 'rgba(255,240,210,0.1)'; g.fillRect(x0 + 2, y0, w - 4, 2);
+        };
+        draw(0);
+        if (x + bw > s) draw(-s);
+        x += bw;
+      }
+    }
+    stains(g, s, 18, 'rgba(70,45,20,0.14)');
+    for (let i = 0; i < 10; i++) blot(g, s, Math.random() * s, Math.random() * s, 30 + Math.random() * 60, 'rgba(255,245,220,0.1)');
+    pixelNoise(g, s, 22);
+  }),
+  plaster: (base, worn = 0) => canvasTex(512, (g, s) => {
     g.fillStyle = rgb(base); g.fillRect(0, 0, s, s);
     for (let i = 0; i < 22; i++) blot(g, s, Math.random() * s, Math.random() * s, 30 + Math.random() * 90, Math.random() < 0.5 ? 'rgba(90,65,35,0.14)' : 'rgba(255,245,220,0.16)');
     g.strokeStyle = 'rgba(70,50,30,0.35)'; g.lineWidth = 1.2;
@@ -70,6 +101,25 @@ const TEX = {
       g.beginPath(); g.moveTo(x, y);
       for (let k = 0; k < 12; k++) { x += (Math.random() - 0.5) * 30; y += Math.random() * 18; g.lineTo(x, y); }
       g.stroke();
+    }
+    // Sıvası dökülmüş yerler: altındaki tuğlalar görünür
+    for (let i = 0; i < worn; i++) {
+      const px = Math.random() * s, py = Math.random() * s, rx = 26 + Math.random() * 40, ry = 16 + Math.random() * 26;
+      const pts = Array.from({ length: 16 }, (_, k) => { const a = (k / 16) * Math.PI * 2, rr = 0.7 + Math.random() * 0.4; return [Math.cos(a) * rx * rr, Math.sin(a) * ry * rr]; });
+      for (const dx of [-s, 0, s]) for (const dy of [-s, 0, s]) {
+        const cx = px + dx, cy = py + dy;
+        if (cx + rx < 0 || cx - rx > s || cy + ry < 0 || cy - ry > s) continue;
+        g.save();
+        g.beginPath(); pts.forEach(([ax, ay], k) => (k ? g.lineTo(cx + ax, cy + ay) : g.moveTo(cx + ax, cy + ay))); g.closePath();
+        g.clip();
+        g.fillStyle = rgb(base, 0.62); g.fillRect(cx - rx - 4, cy - ry - 4, rx * 2 + 8, ry * 2 + 8);
+        for (let yy = Math.floor((cy - ry) / 14) * 14; yy < cy + ry; yy += 14) {
+          for (let xx = Math.floor((cx - rx) / 30) * 30 + ((yy / 14) % 2) * 15 - 30; xx < cx + rx; xx += 30) { g.fillStyle = rgb(0xb98d62, 0.85 + Math.random() * 0.2); g.fillRect(xx, yy, 27, 11); }
+        }
+        g.restore();
+        g.strokeStyle = 'rgba(70,52,34,0.3)'; g.lineWidth = 2;
+        g.beginPath(); pts.forEach(([ax, ay], k) => (k ? g.lineTo(cx + ax, cy + ay) : g.moveTo(cx + ax, cy + ay))); g.closePath(); g.stroke();
+      }
     }
     pixelNoise(g, s, 18);
   }),
@@ -140,6 +190,19 @@ const TEX = {
     } else if (kind === 'grid') {
       g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 4;
       for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * s / 4, 0); g.lineTo(i * s / 4, s); g.stroke(); g.beginPath(); g.moveTo(0, i * s / 4); g.lineTo(s, i * s / 4); g.stroke(); }
+    } else if (kind === 'cobble') {
+      g.fillStyle = rgb(base, 0.55); g.fillRect(0, 0, s, s);
+      const n = 9, cs = s / n;
+      for (let r = 0; r < n; r++) for (let c = 0; c <= n; c++) {
+        const x = c * cs + (r % 2) * cs / 2 - cs / 2 + 3, y = r * cs + 3, w = cs - 6 - Math.random() * 6, hh = cs - 6 - Math.random() * 5;
+        const l = 0.82 + Math.random() * 0.3;
+        for (const sx of [0, -s]) {
+          g.fillStyle = rgb(base, l);
+          g.beginPath(); g.roundRect(x + sx, y, w, hh, 9); g.fill();
+          g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(x + sx + 4, y + 2, w - 8, 3);
+          g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(x + sx + 4, y + hh - 4, w - 8, 3);
+        }
+      }
     } else if (kind === 'snow') {
       for (let i = 0; i < 26; i++) { g.fillStyle = 'rgba(150,170,200,0.18)'; g.beginPath(); g.ellipse(Math.random() * s, Math.random() * s, 6, 10, Math.random() * 3, 0, 7); g.fill(); }
     }
@@ -196,10 +259,21 @@ const THEMES = {
   desert: {
     sky: [0x3d7fc4, 0xa6c8e6, 0xe2d3b4], clouds: 0.55, fog: 0xd9ccb0, fogNear: 70, fogFar: 230,
     sun: [0xfff0d6, 2.7, [38, 70, 22]], hemi: [0xd6e6ff, 0x9a8a70, 1.15], envGround: 0x9c9384,
-    grade: { tint: [1.05, 1.0, 0.92], sat: 1.1 },
+    grade: { tint: [1.05, 1.0, 0.92], sat: 1.1 }, container: 0x2d5f8a,
     make: () => ({
-      wallA: TEX.bricks(0xc9a66e, '#8f7449'), wallB: TEX.plaster(0xd4bc8e), trim: TEX.trim(0xa68756),
+      wallA: TEX.sandstone(0xcfae78), wallB: TEX.plaster(0xd8c194, 2), trim: TEX.trim(0xb09062),
       ground: TEX.ground(0xc3a272, 'sand'), site: TEX.tiles(0xbaa27c, '#7d6a4c'), crate: TEX.woodCrate(0x8f6236),
+      stone: TEX.sandstone(0xbf9d6c), door: TEX.planks(0x6d4b2c),
+    }),
+  },
+  mirage: {
+    sky: [0x3a83c8, 0xadcbe6, 0xe6d8bc], clouds: 0.4, fog: 0xe2d4b8, fogNear: 70, fogFar: 240,
+    sun: [0xfff1d8, 2.8, [-34, 72, 30]], hemi: [0xd8e6ff, 0xa38c6c, 1.15], envGround: 0xa89880,
+    grade: { tint: [1.04, 1.0, 0.95], sat: 1.08 }, container: 0x8a3b2a, groundScale: 3,
+    make: () => ({
+      wallA: TEX.plaster(0xe3c99f, 2), wallB: TEX.sandstone(0xd3b07a), trim: TEX.trim(0xc0a47a),
+      ground: TEX.ground(0xbfae8c, 'cobble'), site: TEX.tiles(0xc8b48e, '#8a7656'), crate: TEX.woodCrate(0x8f6236),
+      stone: TEX.sandstone(0xc6a777), door: TEX.planks(0x5f6f7f),
     }),
   },
   industrial: {
@@ -209,6 +283,7 @@ const THEMES = {
     make: () => ({
       wallA: TEX.panels(0x8e9090), wallB: TEX.corrugated(0x5d7186), trim: TEX.trim(0xd2a62a, 'hazard'),
       ground: TEX.ground(0x8a8c8e, 'concrete'), site: TEX.tiles(0xb8a050, '#555'), crate: TEX.container(0xb5532a), crate2: TEX.container(0x2f5e8a),
+      stone: TEX.stone(0x8a8c8e), door: TEX.planks(0x5d5040),
     }),
   },
   snow: {
@@ -218,6 +293,7 @@ const THEMES = {
     make: () => ({
       wallA: TEX.stone(0x8d939b), wallB: TEX.planks(0x93714f), trim: TEX.trim(0xf2f6fa, 'snow'),
       ground: TEX.ground(0xe6ecf2, 'snow'), site: TEX.tiles(0xb8c3cc, '#6d7680'), crate: TEX.woodCrate(0x6e7b4d),
+      stone: TEX.stone(0x8d939b), door: TEX.planks(0x6e5236),
     }),
   },
   arena: {
@@ -227,6 +303,7 @@ const THEMES = {
     make: () => ({
       wallA: TEX.tech(0x646b78, '#ff8a3a'), wallB: TEX.tech(0x5c6370, '#3aa8ff'), trim: TEX.trim(0x3a3d44),
       ground: TEX.ground(0x767a82, 'grid'), site: TEX.tiles(0x666a70, '#333'), crate: TEX.metalBox(0x7a808a),
+      stone: TEX.tech(0x5c6370, '#3aa8ff'), door: TEX.metalBox(0x7a808a),
     }),
   },
 };
@@ -273,6 +350,8 @@ class GeoBuilder {
     this.quad([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], uvSide(-x1 * s, -x0 * s), side);
     const uvTop = F ? [[0, 0], [1, 0], [1, 1], [0, 1]] : [[x0 * s, -z1 * s], [x1 * s, -z1 * s], [x1 * s, -z0 * s], [x0 * s, -z0 * s]];
     this.quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], uvTop, [c1, c1, c1, c1]);
+    // Alt yüz (tavanlar aşağıdan görünür)
+    if (o.under) this.quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0], [[x0 * s, z0 * s], [x1 * s, z0 * s], [x1 * s, z1 * s], [x0 * s, z1 * s]], [c0, c0, c0, c0]);
   }
   build() {
     const g = new THREE.BufferGeometry();
@@ -370,7 +449,7 @@ function makeFloorAO(map, theme) {
   for (const b of map.boxes) {
     const x0 = Math.max(0, Math.round((b.min[0] - map.ox) * AO_PPM)), x1 = Math.min(W, Math.round((b.max[0] - map.ox) * AO_PPM));
     const z0 = Math.max(0, Math.round((b.min[2] - map.oz) * AO_PPM)), z1 = Math.min(H, Math.round((b.max[2] - map.oz) * AO_PPM));
-    const v = b.type === 'wall' ? 1 : b.big ? 0.85 : 0.7;
+    const v = b.type === 'wall' ? 1 : b.type === 'block' ? (b.mat === 'roof' ? 0.3 : b.mat === 'door' ? 0.6 : 0.9) : b.type === 'prop' ? 0.6 : b.big ? 0.85 : 0.7;
     for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) occ[z * W + x] = Math.max(occ[z * W + x], v);
   }
   let ao = boxBlur(occ, W, H, 3);
@@ -379,8 +458,16 @@ function makeFloorAO(map, theme) {
   c.width = W; c.height = H;
   const g = c.getContext('2d');
   const img = g.createImageData(W, H);
+  // Büyük ölçekli renk dalgalanması (~15 m): zemin dokusunun tekrarı göze batmasın
+  const LN = 10, lat = Float32Array.from({ length: (LN + 1) * (LN + 1) }, () => Math.random());
+  const macro = (i) => {
+    const fx = ((i % W) / W) * LN, fy = (Math.floor(i / W) / H) * LN, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+    const a = lat[y0 * (LN + 1) + x0], b = lat[y0 * (LN + 1) + x0 + 1], c = lat[(y0 + 1) * (LN + 1) + x0], d = lat[(y0 + 1) * (LN + 1) + x0 + 1];
+    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+  };
   for (let i = 0; i < W * H; i++) {
-    const v = Math.round(255 * (1 - 0.62 * Math.min(1, ao[i] * 1.15)));
+    const v = Math.round(255 * (1 - 0.62 * Math.min(1, ao[i] * 1.15)) * (0.86 + 0.14 * macro(i)));
     img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v;
     img.data[i * 4 + 3] = 255;
   }
@@ -433,8 +520,16 @@ export function buildWorld(scene, map, opts = {}) {
     trim: std(T.trim, { bumpScale: 0.5, mat: theme.glowTrim ? { emissive: new THREE.Color(theme.glowTrim), emissiveIntensity: 0.0 } : {} }),
     crate: std(T.crate, { bumpScale: 1 }), crate2: T.crate2 ? std(T.crate2, { bumpScale: 1 }) : null,
     site: std(T.site, { bumpScale: 0.6 }),
+    stone: std(T.stone, { bumpScale: 0.6 }), roof: std(T.stone, { bumpScale: 0.5 }), door: std(T.door, { bumpScale: 0.5 }),
   };
-  const gb = { wallA: new GeoBuilder(), wallB: new GeoBuilder(), trim: new GeoBuilder(), crate: new GeoBuilder(), crate2: new GeoBuilder(), site: new GeoBuilder(), glow: new GeoBuilder() };
+  // Yükseltilmiş zeminlerin üstü zeminle aynı dokuda (ana zemindeki tekrar ayarı olmadan)
+  const capTex = T.ground.clone();
+  capTex.repeat.set(1, 1);
+  capTex.needsUpdate = true;
+  mats.cap = std(capTex, { bumpScale: 0.3 });
+  const beamTex = TEX.planks(0x5c4128);
+  mats.beam = std(beamTex, { bumpScale: 0.6 });
+  const gb = { wallA: new GeoBuilder(), wallB: new GeoBuilder(), trim: new GeoBuilder(), crate: new GeoBuilder(), crate2: new GeoBuilder(), site: new GeoBuilder(), glow: new GeoBuilder(), stone: new GeoBuilder(), cap: new GeoBuilder(), roof: new GeoBuilder(), door: new GeoBuilder(), beam: new GeoBuilder() };
 
   let n = 0;
   for (const b of map.boxes) {
@@ -444,6 +539,26 @@ export function buildWorld(scene, map, opts = {}) {
       if (theme.glowTrim && !b.border) gb.glow.box([b.min[0] - 0.02, 1.2, b.min[2] - 0.02], [b.max[0] + 0.02, 1.32, b.max[2] + 0.02], { scale: 1, bottom: 1, gradH: 1 });
     } else if (b.type === 'crate') {
       (T.crate2 && n++ % 2 ? gb.crate2 : gb.crate).box(b.min, b.max, { faceUV: true });
+    } else if (b.type === 'block') {
+      if (b.mat === 'floor' || b.mat === 'step') {
+        gb.stone.box(b.min, b.max, { scale: 3, bottom: 0.78, gradH: 3 });
+        if (b.mat === 'floor') gb.cap.box([b.min[0], b.max[1], b.min[2]], [b.max[0], b.max[1] + 0.012, b.max[2]], { scale: theme.groundScale || 8, bottom: 1, gradH: 1 });
+      } else if (b.mat === 'roof') {
+        gb.roof.box(b.min, b.max, { scale: 4, bottom: 0.8, gradH: 100, under: true });
+        // Altta kısa kenar boyunca tahta kirişler (her 2 m'de bir)
+        const alongX = b.max[0] - b.min[0] >= b.max[2] - b.min[2];
+        const [a0, a1] = alongX ? [b.min[0], b.max[0]] : [b.min[2], b.max[2]];
+        for (let a = a0 + 1; a < a1 - 0.5; a += 2) {
+          const y0 = b.min[1] - 0.24, y1 = b.min[1];
+          if (alongX) gb.beam.box([a - 0.11, y0, b.min[2]], [a + 0.11, y1, b.max[2]], { scale: 2, bottom: 0.7, gradH: 100, under: true });
+          else gb.beam.box([b.min[0], y0, a - 0.11], [b.max[0], y1, a + 0.11], { scale: 2, bottom: 0.7, gradH: 100, under: true });
+        }
+      } else if (b.mat === 'door') {
+        gb.door.box(b.min, b.max, { scale: 2, bottom: 0.8, gradH: 3 });
+      } else {
+        gb.wallA.box(b.min, b.max, { scale: 4, bottom: 0.55, gradH: 6.5, under: b.min[1] > 0.5 });
+        gb.trim.box([b.min[0] - 0.06, b.max[1] - 0.02, b.min[2] - 0.06], [b.max[0] + 0.06, b.max[1] + 0.12, b.max[2] + 0.06], { scale: 2, bottom: 0.92, gradH: 100 });
+      }
     }
   }
   for (const s of Object.values(map.sites)) gb.site.box([s.x0, 0, s.z0], [s.x1, 0.015, s.z1], { scale: 4, bottom: 1, gradH: 1 });
@@ -460,7 +575,8 @@ export function buildWorld(scene, map, opts = {}) {
 
   // Zemin
   const W = map.w * CELL, H = map.h * CELL;
-  T.ground.repeat.set(W / 8, H / 8);
+  const gs = theme.groundScale || 8; // zemin dokusunun bir tekrarı (m)
+  T.ground.repeat.set(W / gs, H / gs);
   const floorMat = new THREE.MeshStandardMaterial({ map: T.ground, roughness: map.theme === 'snow' ? 0.75 : 1, ...(bump ? { bumpMap: T.ground, bumpScale: 0.3 } : {}) });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, H), floorMat);
   floor.rotation.x = -Math.PI / 2;
@@ -468,6 +584,9 @@ export function buildWorld(scene, map, opts = {}) {
   group.add(floor);
   const floorAO = makeFloorAO(map, theme);
   group.add(floorAO.mesh);
+  // Eşyalar (araba, konteyner, palmiye...) ve bina cepheleri (pencere, kepenk, kapı, kaide)
+  const scenery = buildScenery(map, theme, { stoneTex: T.trim, plasterTex: T.wallB });
+  group.add(scenery.group);
 
   for (const [k, s] of Object.entries(map.sites)) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({ map: letterTex(k), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
@@ -536,6 +655,9 @@ export function buildWorld(scene, map, opts = {}) {
         }
       });
       for (const t of Object.values(T)) t.dispose();
+      capTex.dispose();
+      beamTex.dispose();
+      scenery.dispose();
       floorAO.tex.dispose();
       if (env) env.dispose();
       if (scene.environment === env?.texture) scene.environment = null;

@@ -58,10 +58,18 @@ Menüde mod seçtikten sonra harita seçilir (her mod + harita ayrı bir odadır
 
 | Harita | Tema | Modlar |
 | --- | --- | --- |
-| **de_kum** | Çöl kasabası, 3 koridor | Hepsi |
+| **de_kum** | CS2 **Dust II** düzeni: Uzun A, Long kapıları, Pit, A rampası, A arabası, Goose; Orta, Xbox, Kedi yolu (Kısa A), orta kapılar; alt ve üst B tünelleri, B kapıları, pencere, B arabası | Hepsi |
+| **de_serap** | CS2 **Mirage** düzeni: Saray ve balkonu, T/A rampası, Tetris, gişe; Orta, pencere odası, bağlantı, orman; B daireleri, minibüs, market, mutfak | Hepsi |
 | **de_depo** | Endüstriyel depo, raflı ana salon, konteynerler | Hepsi |
 | **de_kar** | Karlı kış üssü, geniş orta avlu, kar yağışı | Hepsi |
 | **dm_arena** | Küçük simetrik arena, neon ışıklar | Takımlı ÖM, Herkes Tek |
+
+de_kum ve de_serap, CS2'deki haritaların düzeninden (bölgeler, geçitler, yükseklikler) esinlenerek kodla yeniden
+kuruldu; Valve'ın harita dosyaları ya da dokuları kullanılmadı. Merdivenler, yükseltilmiş alanlar (A bölgesi, kedi
+yolu, pencere odası, saray), tünel tavanları, kapı kanatları ve araba, konteyner, palmiye gibi eşyalar vardır.
+
+Haritalar `public/shared/map.js` içinde: ızgara (`carve`, `put`) ve ek kutular (`stairs`, `platform`, `roof`,
+`slab`, `win`, `prop`). Eşya modelleri ve bina cepheleri (pencere, kepenk, kapı, tente) `public/js/props.js` içinde.
 
 ## Silah eklentileri
 

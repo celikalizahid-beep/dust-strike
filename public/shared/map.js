@@ -1,6 +1,8 @@
 // Paylaşılan harita tanımları (sunucu + istemci aynı veriyi kullanır).
 // Her harita 2 metrelik hücrelerden oluşan bir ızgara: önce her yer duvar, sonra koridorlar oyulur.
 // '#' duvar, '.' zemin, 'C' büyük sandık (2.1 m), 'c' küçük sandık (1.1 m, üstüne zıplanabilir).
+// Izgaranın üstüne ek kutular konabilir: merdiven ve yükseltilmiş zemin (üstünde yürünür), tünel tavanı,
+// kapı kanadı, alçak duvar, pencere pervazı; ayrıca araba, konteyner, varil gibi eşyalar.
 
 export const CELL = 2;
 
@@ -9,35 +11,193 @@ function grid(w, h) {
   const carve = (c1, r1, c2, r2) => { for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) g[r][c] = '.'; };
   const put = (ch, list) => { for (const [c, r] of list) g[r][c] = ch; };
   const line = (ch, c1, r1, c2, r2) => { for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) g[r][c] = ch; };
-  return { g, carve, put, line };
+  const blocks = [], props = [];
+  // Hücre aralığı kutusu (c2/r2 dahil). mat: floor, step (üstünde yürünür), wall, roof, door
+  const block = (c1, r1, c2, r2, y0, y1, mat = 'wall') => blocks.push({ x0: c1, z0: r1, x1: c2 + 1, z1: r2 + 1, y0, y1, mat });
+  // Kesin sınırlı kutu (hücre biriminde, kesirli): kapı kanadı gibi ince parçalar
+  const slab = (x0, z0, x1, z1, y0, y1, mat = 'wall') => blocks.push({ x0, z0, x1, z1, y0, y1, mat });
+  const platform = (c1, r1, c2, r2, y) => block(c1, r1, c2, r2, 0, y, 'floor');
+  // Merdiven: bölge 'dir' yönüne (N, S, E, W) doğru y0'dan y1'e yükselir; basamaklar en çok 0,4 m (kendiliğinden çıkılır)
+  const stairs = (c1, r1, c2, r2, dir, y0, y1) => {
+    const x0 = c1, x1 = c2 + 1, z0 = r1, z1 = r2 + 1;
+    const n = Math.max(1, Math.ceil((y1 - y0) / 0.4 - 1e-6));
+    for (let i = 0; i < n; i++) {
+      const top = y0 + ((y1 - y0) * (i + 1)) / n, a = i / n, b = (i + 1) / n;
+      const s = { y0: 0, y1: top, mat: 'step', x0, x1, z0, z1 };
+      if (dir === 'E') { s.x0 = x0 + (x1 - x0) * a; s.x1 = x0 + (x1 - x0) * b; }
+      else if (dir === 'W') { s.x0 = x1 - (x1 - x0) * b; s.x1 = x1 - (x1 - x0) * a; }
+      else if (dir === 'S') { s.z0 = z0 + (z1 - z0) * a; s.z1 = z0 + (z1 - z0) * b; }
+      else { s.z0 = z1 - (z1 - z0) * b; s.z1 = z1 - (z1 - z0) * a; }
+      blocks.push(s);
+    }
+  };
+  // Tünel / iç mekân tavanı: altından geçilir, gölge düşürür
+  const roof = (c1, r1, c2, r2, y = 3.3) => block(c1, r1, c2, r2, y, y + 0.5, 'roof');
+  // Pencere: oyulmuş hücreye denizlik ve üst lento konur; içinden görülür ve ateş edilir, geçilemez
+  const win = (c, r, sill = 1.25, top = 2.7) => { block(c, r, c, r, 0, sill, 'wall'); block(c, r, c, r, top, 6.5, 'wall'); };
+  // Eşya: car, van, container, barrel, sacks, palm, booth, bench (c, r: merkez hücre koordinatı, rot: 0 ya da 90)
+  const prop = (kind, c, r, rot = 0) => props.push({ kind, c, r, rot });
+  return { g, carve, put, line, block, slab, platform, stairs, roof, win, prop, blocks, props };
 }
 
-// ---------------------------------------------------------------- de_kum: çöl kasabası, 3 koridor
+// ---------------------------------------------------------------- de_kum: CS2 Dust II düzeni
+// Kuzeyde CT doğuşu, güneyde T doğuşu. Doğuda Uzun A, ortada Orta ve Kedi yolu (Kısa A), batıda B tünelleri.
 function kum() {
-  const { g, carve, put } = grid(48, 40);
-  carve(1, 1, 13, 12);   // B bölgesi
-  carve(16, 1, 31, 11);  // CT doğuş
-  carve(34, 1, 46, 12);  // A bölgesi
-  carve(14, 4, 15, 6);   // B <-> CT kapısı
-  carve(32, 5, 33, 7);   // A <-> CT geçidi
-  carve(4, 13, 7, 31);   // B tünelleri
-  carve(22, 12, 25, 31); // orta koridor
-  carve(40, 13, 44, 31); // uzun A
-  carve(8, 21, 21, 22);  // ortadan B'ye geçit
-  carve(26, 16, 39, 17); // ortadan A'ya (catwalk)
-  carve(4, 30, 44, 32);  // güney geçidi
-  carve(15, 33, 32, 38); // T doğuş
-  put('#', [[22, 14], [25, 14]]);
-  put('C', [[3, 3], [4, 3], [9, 6], [11, 10], [12, 10], [36, 3], [41, 6], [42, 6], [45, 11], [29, 3],
-    [24, 25], [43, 20], [7, 26], [10, 31], [36, 30], [29, 36]]);
-  put('c', [[5, 3], [9, 7], [10, 6], [6, 9], [37, 3], [41, 7], [45, 10], [38, 10], [18, 8], [28, 3],
-    [23, 25], [43, 21], [41, 27], [5, 17], [32, 16], [14, 22], [11, 31], [37, 30], [18, 35], [28, 36], [23, 34]]);
+  const G = grid(56, 56);
+  const { g, carve, put, block, slab, platform, stairs, roof, win, prop } = G;
+  const A = 1.2; // A bölgesi, Kısa A ve kedi yolu yüksekliği
+  // ---- CT doğuşu ve CT orta
+  carve(25, 3, 38, 10);          // CT doğuşu
+  carve(26, 11, 28, 17);         // CT orta
+  // ---- A bölgesi (yükseltilmiş) ve CT rampası
+  carve(40, 3, 52, 15);          // A bölgesi
+  carve(39, 5, 39, 9);           // CT doğuşu -> A
+  stairs(39, 5, 40, 9, 'E', 0, A); // CT rampası
+  platform(41, 3, 52, 15, A);
+  platform(40, 3, 40, 4, A);
+  platform(40, 10, 40, 15, A);
+  slab(50.4, 3, 50.7, 5.3, A, A + 1.05, 'wall'); // Goose: köşedeki alçak duvar
+  prop('car', 45, 12.5, 0);       // A arabası
+  put('C', [[47, 8], [43, 5]]); put('c', [[48, 8], [44, 5], [51, 13]]);
+  // ---- Uzun A, A rampası ve Pit
+  carve(47, 16, 51, 34);         // Uzun A
+  stairs(47, 16, 51, 18, 'N', 0, A); // A rampası
+  carve(52, 28, 54, 34);         // Pit
+  slab(52, 28, 52.3, 33, 0, 0.9, 'wall'); // pit kenarı
+  prop('container', 49, 23, 90);  // mavi konteyner
+  put('c', [[51, 30]]);
+  // ---- Long kapıları ve dış uzun
+  carve(42, 33, 46, 34);         // Long kapıları
+  carve(40, 33, 43, 45);         // dış uzun (T doğuşundan kuzeye)
+  slab(44.9, 33, 45.1, 33.95, 0, 2.9, 'door');   // kapalı kanat
+  slab(45.1, 34.88, 46, 35, 0, 2.9, 'door');     // açık kanat (duvara yaslı)
+  block(42, 33, 46, 34, 2.9, 6.5, 'wall');       // kapı üstü
+  put('C', [[41, 44]]); put('c', [[40, 37]]);
+  // ---- T doğuşu
+  carve(21, 44, 41, 53);
+  prop('barrel', 23, 46.5); prop('barrel', 23.6, 47.2); prop('barrel', 39.5, 52.2);
+  prop('sacks', 30, 52.6); prop('palm', 35.5, 50.5); prop('palm', 25, 51.5);
+  put('C', [[33, 46]]); put('c', [[34, 46]]);
+  // ---- Üst orta, Suicide, Orta, Xbox, orta kapılar
+  carve(26, 36, 28, 43);         // Suicide
+  carve(24, 32, 30, 35);         // üst orta
+  carve(25, 18, 29, 31);         // orta
+  slab(26, 17.85, 27.3, 18, 0, 2.9, 'door');     // orta kapılar: kapalı kanat
+  slab(28.05, 16.9, 28.2, 17.95, 0, 2.9, 'door'); // açık kanat
+  put('C', [[29, 25]]);           // Xbox
+  put('c', [[24, 33], [30, 34]]);
+  // ---- Kedi yolu ve Kısa A (Xbox yanından merdivenle çıkılır)
+  carve(30, 21, 31, 24);         // kedi merdiveni
+  stairs(30, 21, 31, 24, 'E', 0, A);
+  carve(32, 18, 36, 24);         // kedi yolu
+  platform(32, 18, 36, 24, A);
+  carve(37, 15, 42, 20);         // Kısa A
+  platform(37, 16, 42, 20, A);
+  platform(37, 15, 39, 15, A);
+  // ---- B kapıları ve pencere
+  carve(18, 12, 25, 14);         // B kapıları koridoru (CT ortadan batıya)
+  slab(18.4, 12, 18.6, 13.25, 0, 2.9, 'door');   // kapalı kanat
+  slab(18.6, 14.85, 19.6, 15, 0, 2.9, 'door');   // açık kanat
+  block(18, 12, 18, 14, 2.9, 6.5, 'wall');
+  carve(19, 5, 24, 7);           // CT doğuşundan pencereye
+  carve(18, 6, 18, 6); win(18, 6);
+  // ---- B bölgesi
+  carve(4, 3, 17, 17);
+  platform(4, 3, 11, 4, 0.4);     // arka platform
+  prop('car', 14.5, 9.5, 90);     // B arabası
+  put('C', [[8, 10], [9, 10], [5, 15], [16, 4]]); put('c', [[8, 11], [10, 10], [15, 16], [6, 3]]);
+  // ---- Üst B tünelleri, alt tüneller, tünel dışı
+  carve(7, 18, 10, 30);          // üst tüneller
+  roof(7, 19, 10, 29);
+  carve(11, 26, 24, 28);         // alt tüneller (ortaya bağlanır)
+  roof(11, 26, 23, 28);
+  carve(8, 31, 12, 44);          // tünel dışı
+  carve(13, 42, 20, 45);
+  prop('barrel', 9, 34.5); prop('sacks', 12, 40.5);
+  put('c', [[9, 22], [10, 29]]);
   return {
-    w: 48, h: 40, g,
-    sites: { A: [36, 2, 45, 11], B: [2, 2, 12, 11] },
-    spawnT: [16, 34, 30, 38], spawnCT: [17, 2, 29, 6],
-    buyT: [15, 33, 32, 38], buyCT: [16, 1, 31, 11],
+    w: 56, h: 56, g, blocks: G.blocks, props: G.props,
+    sites: { A: [41, 4, 51, 14], B: [5, 5, 16, 16] },
+    spawnT: [23, 46, 39, 52], spawnCT: [26, 4, 37, 9],
+    buyT: [21, 44, 41, 53], buyCT: [25, 3, 38, 10],
     yawT: 0, yawCT: Math.PI,
+  };
+}
+
+// ---------------------------------------------------------------- de_serap: CS2 Mirage düzeni
+// Doğuda T doğuşu, batıda CT doğuşu. Güneyde A (saray, A rampası, orman), kuzeyde B (daireler, kısa, market).
+function serap() {
+  const G = grid(56, 48);
+  const { g, carve, put, slab, platform, stairs, roof, win, prop } = G;
+  // ---- T doğuşu
+  carve(46, 18, 54, 30);
+  prop('palm', 52.5, 28.5); prop('barrel', 47, 19); prop('barrel', 47.7, 19.4);
+  // ---- Üst orta ve orta
+  carve(40, 20, 45, 26);         // üst orta
+  carve(22, 21, 39, 25);         // orta
+  put('C', [[42, 22], [38, 25]]); put('c', [[43, 22]]);
+  // ---- Pencere odası (CT tarafı, ortaya yukarıdan bakar)
+  carve(16, 21, 20, 25);
+  platform(16, 21, 20, 25, 2.0);
+  carve(21, 22, 21, 24); for (const r of [22, 23, 24]) win(21, r, 2.6, 4.5);
+  roof(16, 21, 20, 25, 4.6);
+  carve(14, 22, 15, 24);         // CT -> pencere merdiveni
+  stairs(14, 22, 15, 24, 'E', 0, 2.0);
+  // ---- Kısa (orta -> B)
+  carve(22, 11, 24, 20);
+  carve(20, 11, 21, 13);
+  // ---- Bağlantı ve orman (A'ya)
+  carve(25, 26, 27, 29);
+  stairs(25, 26, 27, 29, 'S', 0, 1.2);
+  carve(16, 30, 27, 33);         // orman
+  platform(16, 30, 27, 33, 1.2);
+  carve(14, 30, 15, 33);         // CT -> orman merdiveni
+  stairs(14, 30, 15, 33, 'E', 0, 1.2);
+  // ---- A bölgesi
+  carve(15, 34, 33, 44);
+  stairs(22, 34, 25, 35, 'N', 0, 1.2); // A merdiveni (ormana)
+  carve(12, 35, 14, 41);         // CT -> A
+  prop('booth', 17.5, 37, 0);     // gişe
+  put('C', [[24, 39], [29, 41], [30, 41], [26, 43]]); // ateş kutusu, üçlü
+  put('c', [[29, 42], [20, 42], [31, 36]]);
+  // ---- T rampası, A rampası, Tetris
+  carve(42, 30, 47, 33);         // T rampası
+  carve(34, 30, 41, 33);         // A rampası
+  carve(34, 34, 35, 37);
+  put('C', [[36, 31]]); put('c', [[37, 31], [36, 32]]); // Tetris
+  // ---- Saray (yükseltilmiş, balkondan A'ya atlanır)
+  carve(43, 34, 47, 36);         // saray girişi
+  stairs(43, 34, 47, 36, 'S', 0, 1.6);
+  carve(38, 37, 47, 42);         // saray içi
+  platform(38, 37, 47, 42, 1.6);
+  roof(38, 37, 47, 42, 4.8);
+  carve(34, 38, 37, 41);         // saray balkonu
+  platform(34, 38, 37, 41, 1.6);
+  slab(34, 38, 34.25, 42, 1.6, 2.5, 'wall'); // balkon korkuluğu (üstünden atlanır)
+  // ---- B daireleri (T doğuşundan kuzeybatıya)
+  carve(44, 9, 49, 17);          // T daireleri
+  carve(20, 6, 45, 8);           // B daireleri koridoru
+  roof(21, 6, 43, 8);
+  put('c', [[30, 7], [38, 6]]);
+  // ---- B bölgesi, market, mutfak
+  carve(4, 3, 19, 14);
+  prop('van', 14, 6, 0);          // minibüs
+  prop('bench', 9, 12.6, 0);      // bank
+  put('C', [[7, 5], [8, 5], [5, 11]]); put('c', [[7, 6], [17, 12], [11, 4]]);
+  carve(5, 15, 8, 21);           // market
+  roof(5, 16, 8, 20);
+  carve(9, 17, 12, 20);          // mutfak
+  roof(9, 17, 12, 20);
+  // ---- CT doğuşu
+  carve(3, 22, 13, 34);
+  prop('palm', 4.5, 33); prop('palm', 11.5, 23);
+  put('C', [[6, 28]]); put('c', [[7, 28]]);
+  return {
+    w: 56, h: 48, g, blocks: G.blocks, props: G.props,
+    sites: { A: [16, 35, 32, 43], B: [5, 4, 18, 13] },
+    spawnT: [47, 19, 53, 29], spawnCT: [4, 23, 12, 33],
+    buyT: [46, 18, 54, 30], buyCT: [3, 22, 13, 34],
+    yawT: Math.PI / 2, yawCT: -Math.PI / 2,
   };
 }
 
@@ -122,7 +282,8 @@ function arena() {
 }
 
 export const MAPS = {
-  kum: { title: 'de_kum', desc: 'Çöl kasabası · 3 koridor', theme: 'desert', modes: ['classic', 'tdm', 'ffa'], def: kum },
+  kum: { title: 'de_kum', desc: 'Dust II düzeni · Uzun A, orta, B tünelleri', theme: 'desert', modes: ['classic', 'tdm', 'ffa'], def: kum },
+  serap: { title: 'de_serap', desc: 'Mirage düzeni · saray, pencere, B daireleri', theme: 'mirage', modes: ['classic', 'tdm', 'ffa'], def: serap },
   depo: { title: 'de_depo', desc: 'Endüstriyel depo · raflar', theme: 'industrial', modes: ['classic', 'tdm', 'ffa'], def: depo },
   kar: { title: 'de_kar', desc: 'Kış üssü · geniş avlu', theme: 'snow', modes: ['classic', 'tdm', 'ffa'], def: kar },
   arena: { title: 'dm_arena', desc: 'Küçük arena · hızlı çatışma', theme: 'arena', modes: ['tdm', 'ffa'], def: arena },
@@ -130,6 +291,11 @@ export const MAPS = {
 export const MAP_IDS = Object.keys(MAPS);
 
 const cache = new Map();
+// Eşya ölçüleri (m): uzunluk (rot 0'da x yönü), genişlik, yükseklik
+const PROP_SIZE = {
+  car: [4.4, 1.9, 1.45], van: [5.2, 2.1, 2.25], container: [6.1, 2.45, 2.6], barrel: [0.62, 0.62, 0.92],
+  sacks: [1.3, 1.0, 0.55], palm: [0.5, 0.5, 4.2], booth: [2.2, 2.2, 2.7], bench: [1.9, 0.6, 0.5],
+};
 
 export function buildMap(id = 'kum') {
   if (!MAPS[id]) id = 'kum';
@@ -161,30 +327,59 @@ export function buildMap(id = 'kum') {
       boxes.push({ min: [ox + c * CELL, 0, oz + r * CELL], max: [ox + (c + ww) * CELL, height, oz + (r + hh) * CELL], type: 'wall', v: (c + r) % 2, border });
     }
   }
+  // Ek kutular (merdiven, platform, tavan, kapı, alçak duvar): hücre biriminden metreye
+  const blocks = (def.blocks || []).map((b) => ({ min: [ox + b.x0 * CELL, b.y0, oz + b.z0 * CELL], max: [ox + b.x1 * CELL, b.y1, oz + b.z1 * CELL], type: 'block', mat: b.mat }));
+  boxes.push(...blocks);
+  // Bir noktadaki yürünen zemin yüksekliği (platform ve merdiven üstü)
+  const floorTop = (x, z) => {
+    let y = 0;
+    for (const b of blocks) if ((b.mat === 'floor' || b.mat === 'step') && x > b.min[0] && x < b.max[0] && z > b.min[2] && z < b.max[2]) y = Math.max(y, b.max[1]);
+    return y;
+  };
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const ch = g[r][c];
       if (ch !== 'c' && ch !== 'C') continue;
       const inset = ch === 'c' ? 0.15 : 0.05;
       const ht = ch === 'c' ? 1.1 : 2.1;
-      boxes.push({ min: [ox + c * CELL + inset, 0, oz + r * CELL + inset], max: [ox + (c + 1) * CELL - inset, ht, oz + (r + 1) * CELL - inset], type: 'crate', big: ch === 'C' });
+      const y = floorTop(cx(c), cz(r));
+      boxes.push({ min: [ox + c * CELL + inset, y, oz + r * CELL + inset], max: [ox + (c + 1) * CELL - inset, y + ht, oz + (r + 1) * CELL - inset], type: 'crate', big: ch === 'C' });
     }
   }
-
+  // Eşyalar: çarpışma kutusu + çizim bilgisi (konum, yön, ölçü)
+  const props = (def.props || []).map((p) => {
+    const [len, wid, ht] = PROP_SIZE[p.kind];
+    const x = ox + p.c * CELL, z = oz + p.r * CELL, y = floorTop(x, z);
+    const sx = p.rot === 90 ? wid : len, sz = p.rot === 90 ? len : wid;
+    boxes.push({ min: [x - sx / 2, y, z - sz / 2], max: [x + sx / 2, y + ht, z + sz / 2], type: 'prop', kind: p.kind });
+    return { kind: p.kind, x, y, z, rot: p.rot, len, wid, ht };
+  });
+  // Doğma noktası: hücre ortasında duvar, sandık, kapı ya da eşya yoksa; platform üstündeyse onun yüksekliğinde
+  const spot = (c, r) => {
+    if (g[r][c] !== '.') return null;
+    const x = cx(c), z = cz(r);
+    let y = 0;
+    for (const b of boxes) {
+      if (x + 0.45 <= b.min[0] || x - 0.45 >= b.max[0] || z + 0.45 <= b.min[2] || z - 0.45 >= b.max[2]) continue;
+      if (b.type === 'block' && (b.mat === 'floor' || b.mat === 'step')) { y = Math.max(y, b.max[1]); continue; }
+      if (b.min[1] < y + 2.2) return null;
+    }
+    return [x, y, z];
+  };
   const spawnList = ([c1, r1, c2, r2]) => {
     const out = [];
-    for (let r = r1; r <= r2; r += 2) for (let c = c1; c <= c2; c += 2) if (g[r][c] === '.') out.push([cx(c), 0, cz(r)]);
+    for (let r = r1; r <= r2; r += 2) for (let c = c1; c <= c2; c += 2) { const s = spot(c, r); if (s) out.push(s); }
     return out;
   };
   const dmSpawns = [];
-  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (g[r][c] === '.') dmSpawns.push([cx(c), 0, cz(r)]);
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) { const s = spot(c, r); if (s) dmSpawns.push(s); }
   const zone = (cells) => { const R = rect(cells); return { x: (R.x0 + R.x1) / 2, z: (R.z0 + R.z1) / 2, r: Math.hypot(R.x1 - R.x0, R.z1 - R.z0) / 2 }; };
   const sites = {};
   if (def.sites) for (const k of Object.keys(def.sites)) sites[k] = rect(def.sites[k]);
 
   const map = {
     id, title: info.title, desc: info.desc, theme: info.theme, modes: info.modes,
-    w, h, ox, oz, grid: g, boxes, dmSpawns,
+    w, h, ox, oz, grid: g, boxes, props, dmSpawns,
     spawns: { T: spawnList(def.spawnT), CT: spawnList(def.spawnCT) },
     yaw: { T: def.yawT, CT: def.yawCT },
     sites,
