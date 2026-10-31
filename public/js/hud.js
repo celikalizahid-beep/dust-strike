@@ -7,6 +7,19 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const teamCls = (t) => (t === 'T' ? 'tcol' : t === 'CT' ? 'ctcol' : '');
 const RADAR_PPM = 2.6;
 const CH_SHAPES = ['cross', 't', 'x', 'circle', 'dot'];
+
+// Radar ve harita önizlemesine yükseltilmiş zemin (açık), tavan (koyu gölge), kapı/alçak duvar ve eşyaları çizer
+function drawBlocks(g, map, ppm) {
+  for (const b of map.boxes) {
+    if (b.type !== 'block' && b.type !== 'prop') continue;
+    if (b.type === 'prop') g.fillStyle = 'rgba(110,85,55,0.85)';
+    else if (b.mat === 'floor' || b.mat === 'step') g.fillStyle = 'rgba(255,245,215,0.22)';
+    else if (b.mat === 'roof') g.fillStyle = 'rgba(0,0,0,0.22)';
+    else if (b.min[1] > 1.5) continue; // lento, pencere üstü
+    else g.fillStyle = 'rgba(60,45,30,0.85)';
+    g.fillRect((b.min[0] - map.ox) * ppm, (b.min[2] - map.oz) * ppm, (b.max[0] - b.min[0]) * ppm, (b.max[2] - b.min[2]) * ppm);
+  }
+}
 const OUTLINE = '0 0 0 1px rgba(0,0,0,.85)';
 
 function styleCrosshair(el, c) {
@@ -290,6 +303,7 @@ export class HUD {
         g.fillRect(col * s, r * s, s + 0.5, s + 0.5);
       }
     }
+    drawBlocks(g, map, RADAR_PPM);
     g.fillStyle = 'rgba(255,90,60,0.9)';
     g.font = 'bold 22px Verdana';
     g.textAlign = 'center';
@@ -366,6 +380,7 @@ export class HUD {
       g.fillStyle = ch === '.' ? '#cdb88f' : '#7a5a32';
       g.fillRect(col * s, r * s, s, s);
     }
+    drawBlocks(g, m, s / CELL);
     g.fillStyle = 'rgba(220,60,40,0.55)';
     for (const st of Object.values(m.sites)) g.fillRect((st.x0 - m.ox) / CELL * s, (st.z0 - m.oz) / CELL * s, (st.x1 - st.x0) / CELL * s, (st.z1 - st.z0) / CELL * s);
     return (this.previews[id] = c.toDataURL());

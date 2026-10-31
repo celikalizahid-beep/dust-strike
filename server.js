@@ -266,7 +266,7 @@ class Room {
   spawnPlayer(p) {
     const t = now();
     const s = this.pickSpawn(p);
-    p.pos = [s[0], 0, s[2]];
+    p.pos = [s[0], s[1] || 0, s[2]];
     p.yaw = this.dm ? Math.atan2(s[0], s[2]) : this.map.yaw[p.team];
     p.pitch = 0;
     p.alive = true;
