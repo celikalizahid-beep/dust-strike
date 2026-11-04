@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NFC Kart Okuyucu</string>
+    <string name="hint">Kartı telefonun arkasına yaklaştır</string>
+    <string name="reading">Okunuyor…</string>
+    <string name="read_ok">Kart okundu. Başka bir kart için tekrar yaklaştır.</string>
+    <string name="no_nfc">Bu telefonda NFC yok.</string>
+    <string name="nfc_off">NFC kapalı. Açmak için düğmeye dokun.</string>
+    <string name="open_nfc_settings">NFC ayarlarını aç</string>
+    <string name="not_payment_card">Bu bir ödeme kartı değil.</string>
+    <string name="tag_lost">Kart erken uzaklaştı. Kartı 2–3 saniye sabit tut ve tekrar dene.</string>
+    <string name="read_failed">Kart okunamadı: %1$s</string>
+    <string name="label_pan">Kart numarası</string>
+    <string name="label_expiry">Son kullanma</string>
+    <string name="label_type">Kart tipi</string>
+    <string name="label_holder">Kart sahibi</string>
+    <string name="label_country">Ülke</string>
+    <string name="label_currency">Para birimi</string>
+    <string name="copy">Kopyala</string>
+    <string name="copied">Kopyalandı</string>
+    <string name="clip_label">Kart numarası</string>
+</resources>

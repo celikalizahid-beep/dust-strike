@@ -1,0 +1,49 @@
+# NFC Kart Okuyucu: testleri çalıştırır, APK'yı derler ve "nfc-kart-okuyucu" adlı GitHub sürümüne ekler.
+# Elle çalıştırma: GitHub > Actions > "NFC Kart Okuyucu derle" > Run workflow
+name: NFC Kart Okuyucu derle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'claude/nfc-card-reader-app-*']
+    paths:
+      - 'apps/nfc-kart-okuyucu/**'
+      - '.github/workflows/nfc-kart-okuyucu.yml'
+
+# Aynı anda iki çalışma sürümü silip yeniden oluşturmaya çalışmasın.
+concurrency:
+  group: nfc-kart-okuyucu
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: apps/nfc-kart-okuyucu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Testler ve APK
+        run: ./gradlew testDebugUnitTest assembleDebug --no-daemon
+      - run: cp app/build/outputs/apk/debug/app-debug.apk NFCKartOkuyucu.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NFCKartOkuyucu
+          path: apps/nfc-kart-okuyucu/NFCKartOkuyucu.apk
+      - name: GitHub sürümünü güncelle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nfc-kart-okuyucu --yes --cleanup-tag || true
+          gh release create nfc-kart-okuyucu NFCKartOkuyucu.apk \
+            --target "${{ github.sha }}" \
+            --title "NFC Kart Okuyucu" \
+            --notes "Telefona indir: https://github.com/${{ github.repository }}/releases/download/nfc-kart-okuyucu/NFCKartOkuyucu.apk
+
+          Kurulum ve kullanım: apps/nfc-kart-okuyucu/OKUBENI.md"
