@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mavi-siyah degrade, yuvarlak köşeli kart zemini -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="18dp" />
+    <gradient
+        android:angle="135"
+        android:startColor="#2550A8"
+        android:centerColor="#15284C"
+        android:endColor="#070B16"
+        android:type="linear" />
+    <stroke android:width="1dp" android:color="#33FFFFFF" />
+</shape>

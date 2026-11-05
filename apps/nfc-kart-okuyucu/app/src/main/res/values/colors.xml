@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0A0E1A</color>
+    <color name="surface">#111A2E</color>
+    <color name="navy">#10203F</color>
+    <color name="blue">#3B82F6</color>
+    <color name="blue_dark">#1E3A8A</color>
+    <color name="text">#E8ECF5</color>
+    <color name="text_muted">#8A94A6</color>
+    <color name="chip">#D9B64E</color>
+    <color name="chip_line">#9A7B22</color>
+    <color name="danger">#E4572E</color>
+</resources>

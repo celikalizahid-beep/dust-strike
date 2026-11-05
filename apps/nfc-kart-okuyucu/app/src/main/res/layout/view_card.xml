@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mavi-siyah degrade üzerinde gerçek bir kart görünümü. Hem okuma ekranında hem kayıtlı listede kullanılır. -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="210dp"
+    android:background="@drawable/card_background"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/cardType"
+        style="@style/CardValue"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true"
+        android:textStyle="bold"
+        android:text="" />
+
+    <ImageView
+        android:id="@+id/nfc"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentEnd="true"
+        android:contentDescription="@string/nfc_desc"
+        android:src="@drawable/nfc_wave" />
+
+    <View
+        android:id="@+id/chip"
+        android:layout_width="44dp"
+        android:layout_height="34dp"
+        android:layout_below="@id/cardType"
+        android:layout_marginTop="18dp"
+        android:background="@drawable/card_chip" />
+
+    <TextView
+        android:id="@+id/pan"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerVertical="true"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.14"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:textIsSelectable="true"
+        android:text="" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentStart="true"
+        android:orientation="vertical">
+
+        <TextView style="@style/CardCaption" android:text="@string/label_expiry" />
+        <TextView android:id="@+id/expiry" style="@style/CardValue" android:text="" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/holderBox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentEnd="true"
+        android:gravity="end"
+        android:orientation="vertical">
+
+        <TextView style="@style/CardCaption" android:text="@string/label_holder" />
+        <TextView android:id="@+id/holder" style="@style/CardValue" android:text="" />
+    </LinearLayout>
+</RelativeLayout>

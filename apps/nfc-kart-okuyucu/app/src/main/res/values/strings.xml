@@ -19,4 +19,5 @@
     <string name="copy">Kopyala</string>
     <string name="copied">Kopyalandı</string>
     <string name="clip_label">Kart numarası</string>
+    <string name="nfc_desc">Temassız</string>
 </resources>

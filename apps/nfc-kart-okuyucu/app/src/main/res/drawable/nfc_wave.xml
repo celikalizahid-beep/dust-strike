@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Temassız (NFC) dalga simgesi -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp" android:height="22dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="#DCE6FA" android:strokeWidth="2" android:strokeLineCap="round"
+        android:fillColor="#00000000" android:pathData="M8,6a9,9 0,0 1,0 12" />
+    <path android:strokeColor="#DCE6FA" android:strokeWidth="2" android:strokeLineCap="round"
+        android:fillColor="#00000000" android:pathData="M13,4a14,14 0,0 1,0 16" />
+</vector>
