@@ -1,6 +1,7 @@
 package com.nfckart.okuyucu;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipDescription;
@@ -15,6 +16,7 @@ import android.os.PersistableBundle;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -22,10 +24,11 @@ import com.nfckart.okuyucu.emv.CardInfo;
 import com.nfckart.okuyucu.emv.EmvException;
 import com.nfckart.okuyucu.emv.EmvReader;
 import com.nfckart.okuyucu.emv.Labels;
+import com.nfckart.okuyucu.emv.SavedCard;
 
 import java.io.IOException;
 
-/** NFC okuyucu modunu açar, yaklaştırılan kartı okur ve bilgilerini gösterir. Hiçbir veri kaydedilmez. */
+/** NFC okuyucu modunu açar, yaklaştırılan kartı okur, bir kart görseliyle gösterir ve isteğe bağlı kaydeder. */
 public class MainActivity extends Activity {
     private static final int READER_FLAGS = NfcAdapter.FLAG_READER_NFC_A
             | NfcAdapter.FLAG_READER_NFC_B
@@ -33,38 +36,31 @@ public class MainActivity extends Activity {
     private static final int TIMEOUT_MS = 5000;
 
     private NfcAdapter nfc;
+    private CardRepository repo;
     private boolean readerEnabled;
-    private String currentPan;
+    private CardInfo currentCard;
 
     private TextView status;
     private Button nfcSettings;
     private View result;
-    private TextView pan;
-    private TextView expiry;
-    private TextView cardType;
-    private View holderRow;
-    private TextView holder;
-    private TextView country;
-    private TextView currency;
+    private TextView meta;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        repo = new CardRepository(this);
         status = findViewById(R.id.status);
         nfcSettings = findViewById(R.id.nfcSettings);
         result = findViewById(R.id.result);
-        pan = findViewById(R.id.pan);
-        expiry = findViewById(R.id.expiry);
-        cardType = findViewById(R.id.cardType);
-        holderRow = findViewById(R.id.holderRow);
-        holder = findViewById(R.id.holder);
-        country = findViewById(R.id.country);
-        currency = findViewById(R.id.currency);
+        meta = findViewById(R.id.meta);
 
         nfcSettings.setOnClickListener(v -> openNfcSettings());
         findViewById(R.id.copy).setOnClickListener(v -> copyPan());
+        findViewById(R.id.save).setOnClickListener(v -> askLabelAndSave());
+        findViewById(R.id.savedCards).setOnClickListener(
+                v -> startActivity(new Intent(this, SavedCardsActivity.class)));
 
         nfc = NfcAdapter.getDefaultAdapter(this);
     }
@@ -129,36 +125,50 @@ public class MainActivity extends Activity {
     }
 
     private void showCard(CardInfo info) {
-        currentPan = info.pan;
-        pan.setText(Labels.groupPan(info.pan));
-        expiry.setText(info.expiry != null ? info.expiry : "—");
-        cardType.setText(info.cardType);
-        if (info.holderName != null) {
-            holder.setText(info.holderName);
-            holderRow.setVisibility(View.VISIBLE);
-        } else {
-            holderRow.setVisibility(View.GONE);
-        }
-        country.setText(Labels.country(info.countryCode));
-        currency.setText(Labels.currency(info.currencyCode));
+        currentCard = info;
+        CardViews.bind(result, info.cardType, info.pan, info.expiry, info.holderName);
+        meta.setText(getString(R.string.meta_fmt,
+                Labels.country(info.countryCode), Labels.currency(info.currencyCode)));
         result.setVisibility(View.VISIBLE);
         status.setText(R.string.read_ok);
     }
 
     private void showError(String message) {
         runOnUiThread(() -> {
-            currentPan = null;
+            currentCard = null;
             result.setVisibility(View.GONE);
             status.setText(message);
         });
     }
 
+    private void askLabelAndSave() {
+        if (currentCard == null) {
+            return;
+        }
+        final CardInfo card = currentCard;
+        final EditText input = new EditText(this);
+        input.setHint(R.string.save_hint);
+        input.setSingleLine(true);
+        int pad = Math.round(20 * getResources().getDisplayMetrics().density);
+        input.setPadding(pad, pad, pad, pad);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.save_title)
+                .setView(input)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    String label = input.getText().toString().trim();
+                    repo.add(SavedCard.from(card, label, System.currentTimeMillis()));
+                    Toast.makeText(this, R.string.saved_ok, Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
     private void copyPan() {
-        if (currentPan == null) {
+        if (currentCard == null) {
             return;
         }
         ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        ClipData clip = ClipData.newPlainText(getString(R.string.clip_label), currentPan);
+        ClipData clip = ClipData.newPlainText(getString(R.string.clip_label), currentCard.pan);
         if (Build.VERSION.SDK_INT >= 33) {
             // Android 13+: pano önizlemesinde numarayı gizler; sistem kendi "kopyalandı" bildirimini gösterir.
             PersistableBundle extras = new PersistableBundle();

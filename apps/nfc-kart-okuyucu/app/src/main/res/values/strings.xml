@@ -20,4 +20,15 @@
     <string name="copied">Kopyalandı</string>
     <string name="clip_label">Kart numarası</string>
     <string name="nfc_desc">Temassız</string>
+    <string name="save">Kaydet</string>
+    <string name="saved_cards">Kayıtlı kartlar</string>
+    <string name="no_saved">Henüz kayıtlı kart yok.</string>
+    <string name="saved_ok">Kart kaydedildi</string>
+    <string name="delete">Sil</string>
+    <string name="deleted">Kart silindi</string>
+    <string name="save_title">Kartı kaydet</string>
+    <string name="save_hint">İsim (isteğe bağlı, ör. Papara)</string>
+    <string name="cancel">Vazgeç</string>
+    <string name="saved_title">Kayıtlı kartlar</string>
+    <string name="meta_fmt">%1$s · %2$s</string>
 </resources>
