@@ -1,9 +1,10 @@
 # NFC Kart Okuyucu
 
 Temassız banka kartının (ör. Papara Mastercard kart ya da sticker) NFC ile okunabilen temel bilgilerini
-gösteren küçük bir Android uygulaması. Kendi kartını kontrol etmek için yapıldı.
+gösteren küçük bir Android uygulaması. Kendi kartını kontrol etmek için yapıldı. Okunan kart, mavi-siyah
+temalı bir kart görseliyle gösterilir; istersen cihazına kaydedip sonra tekrar bakabilirsin.
 
-- **İnternet izni yok.** Okunan bilgi telefondan dışarı çıkmaz, hiçbir yere kaydedilmez.
+- **İnternet izni yok.** Okunan ya da kaydedilen bilgi telefondan dışarı çıkmaz, hiçbir yere gönderilmez.
 - Ek kütüphane kullanmaz, Android 5.0 ve üzerinde çalışır. Telefonda NFC olmalı.
 
 ## İndirme
@@ -34,6 +35,19 @@ yüklenmedi" hatası verirse önce eski sürümü kaldır, sonra yenisini kur.
    panoya alabilirsin (Android 13 ve üzerinde pano önizlemesinde gizlenir).
 
 "Kart erken uzaklaştı" mesajı gelirse kartı biraz daha uzun ve sabit tut.
+
+### Kartı kaydetme
+
+Okuma sonrası kart görselinin altındaki **Kaydet** düğmesine dokun. İstersen karta kısa bir **isim**
+ver (ör. "Papara", "Maaş kartı"); boş bırakabilirsin. Kaydedilenlere ana ekrandaki **Kayıtlı kartlar**
+düğmesinden bakarsın; her kartın yanındaki **Sil** ile kaldırabilirsin.
+
+- Kayıtlar telefonun **yalnızca bu uygulamaya ait** özel alanında tutulur; başka uygulamalar erişemez,
+  internete gönderilmez. Uygulamayı kaldırınca kayıtlar da silinir.
+- Kayıtlı listede kart numarası **tam** görünür. Telefonunu başkalarıyla paylaşıyorsan bunu göz önünde
+  bulundur.
+- Uygulama kartı **yalnızca okur ve senin için saklar**; kaydedilen kartı bir ödeme cihazına ya da başka
+  bir telefona *karta benziyormuş gibi* okutmak mümkün değildir (ve bu uygulama bunu yapmaz).
 
 ### Sticker'ı okutmak
 
