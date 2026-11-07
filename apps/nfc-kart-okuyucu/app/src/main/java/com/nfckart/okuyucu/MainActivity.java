@@ -24,6 +24,7 @@ import com.nfckart.okuyucu.emv.CardInfo;
 import com.nfckart.okuyucu.emv.EmvException;
 import com.nfckart.okuyucu.emv.EmvReader;
 import com.nfckart.okuyucu.emv.Labels;
+import com.nfckart.okuyucu.emv.ReadArbiter;
 import com.nfckart.okuyucu.emv.SavedCard;
 
 import java.io.IOException;
@@ -39,6 +40,7 @@ public class MainActivity extends Activity {
     private CardRepository repo;
     private boolean readerEnabled;
     private CardInfo currentCard;
+    private final ReadArbiter arbiter = new ReadArbiter();
 
     private TextView status;
     private Button nfcSettings;
@@ -95,26 +97,30 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Okuyucu iş parçacığında çağrılır (arayüz iş parçacığı değil). */
+    /** Okuyucu iş parçacığında çağrılır (arayüz iş parçacığı değil); üst üste binebilir. */
     private void onTag(Tag tag) {
+        final int token = arbiter.begin();
         IsoDep isoDep = IsoDep.get(tag);
         if (isoDep == null) {
-            showError(getString(R.string.not_payment_card));
+            apply(token, () -> status.setText(R.string.not_payment_card));
             return;
         }
-        runOnUiThread(() -> status.setText(R.string.reading));
+        apply(token, () -> status.setText(R.string.reading));
         try {
             isoDep.connect();
             isoDep.setTimeout(TIMEOUT_MS);
             CardInfo info = new EmvReader(isoDep::transceive).read();
-            runOnUiThread(() -> showCard(info));
+            apply(token, () -> showCard(info));
         } catch (IOException e) {
-            // TagLostException dahil: kart okuma bitmeden uzaklaştırıldı.
-            showError(getString(R.string.tag_lost));
+            // TagLostException dahil: kart okuma bitmeden uzaklaştırıldı. Ekranda gösterilen son kartı
+            // silmeyiz; yalnızca durum satırında uyarı veririz, böylece kıpırtı bilgileri yok etmez.
+            apply(token, () -> status.setText(R.string.tag_lost));
         } catch (EmvException e) {
-            showError(e.getMessage());
+            final String message = e.getMessage();
+            apply(token, () -> status.setText(message));
         } catch (RuntimeException e) {
-            showError(getString(R.string.read_failed, e.getClass().getSimpleName()));
+            final String name = e.getClass().getSimpleName();
+            apply(token, () -> status.setText(getString(R.string.read_failed, name)));
         } finally {
             try {
                 isoDep.close();
@@ -133,11 +139,15 @@ public class MainActivity extends Activity {
         status.setText(R.string.read_ok);
     }
 
-    private void showError(String message) {
+    /**
+     * {@code action}'ı arayüz iş parçacığında, yalnızca bu okuma ({@code token}) hâlâ en güncel okumaysa
+     * çalıştırır. Böylece geç biten eski bir okuma, daha yeni bir okumanın sonucunu ezemez.
+     */
+    private void apply(int token, Runnable action) {
         runOnUiThread(() -> {
-            currentCard = null;
-            result.setVisibility(View.GONE);
-            status.setText(message);
+            if (arbiter.isCurrent(token)) {
+                action.run();
+            }
         });
     }
 
