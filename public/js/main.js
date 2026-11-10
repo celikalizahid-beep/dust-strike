@@ -5,7 +5,9 @@ import { WEAPONS, ITEMS, ATTACHMENTS, canAttach, magSize, attFromCode } from '..
 import { movePlayer, boxHit, raycastWorld, rayAABB, STAND_H, CROUCH_H, STAND_EYE, CROUCH_EYE, JUMP_V, PLAYER_HW } from '../shared/physics.js';
 import { buildWorld } from './world.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createPlayerModel, createWeaponModel, Viewmodel, makeNameSprite, setWorldReflections } from './models.js';
+import { createWeaponModel, Viewmodel, makeNameSprite, setWorldReflections } from './models.js';
+import { createPlayerModel } from './player.js';
+import { playerHitboxes } from '../shared/hitbox.js';
 import * as sfx from './audio.js';
 import { Effects } from './effects.js';
 import { HUD } from './hud.js';
@@ -355,6 +357,7 @@ function getRemote(id) {
       id, name: '', team: null, model: null, modelTeam: null, nameSprite: null, snaps: [],
       alive: false, dead: false, deathT: 0, w: null,
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, crouch: 0, speed: 0, legT: 0, stepT: 0, hitboxes: [],
+      mx: 0, mz: -1, air: 0, // hareket yönü (modelin kendi uzayında) ve havada olma oranı: yürüme animasyonu için
     };
     remotes.set(id, r);
   }
@@ -373,6 +376,7 @@ function ensureModel(r, team, force = false) {
   r.model.group.add(r.nameSprite);
   r.model.group.position.set(r.x, r.y, r.z);
   if (r.w) r.model.setWeapon(r.w, attFromCode(r.att));
+  if (r.dead) r.model.updateDeath(1, r.crouch); // model yenilenirken (ad / takım değişimi) yerdeki oyuncu ayağa kalkmasın
   scene.add(r.model.group);
 }
 
@@ -410,7 +414,7 @@ function applySnap(ps, now) {
     if (alive && !r.alive) {
       r.snaps.length = 0;
       r.dead = false;
-      r.model.group.rotation.x = 0;
+      r.model.revive();
       r.x = x; r.y = y; r.z = z;
     }
     r.alive = alive;
@@ -447,38 +451,36 @@ function updateRemotes(dt, now) {
           }
         }
       }
-      const moved = Math.hypot(x - r.x, z - r.z);
-      const inAir = Math.abs(y - r.y) > 0.01;
+      const dx = x - r.x, dz = z - r.z;
+      const moved = Math.hypot(dx, dz);
+      // Zıplama / düşme: dikey hız belirgin ama basamak çıkışı kadar ani değil
+      const vy = dt > 0 ? (y - r.y) / dt : 0;
+      const inAir = Math.abs(vy) > 1.2 && Math.abs(vy) < 12;
       r.speed = r.speed * 0.8 + (dt > 0 ? moved / dt : 0) * 0.2;
+      if (moved > 1e-4) {
+        // Hareket yönü modelin kendi uzayında (ileri −z): geri ve yana giderken adımlar o yöne atılır
+        const sin = Math.sin(yaw), cos = Math.cos(yaw), f = Math.min(1, dt * 12);
+        r.mx += ((dx * cos - dz * sin) / moved - r.mx) * f;
+        r.mz += ((dx * sin + dz * cos) / moved - r.mz) * f;
+      }
+      r.air += ((inAir ? 1 : 0) - r.air) * Math.min(1, dt * 9);
       r.x = x; r.y = y; r.z = z; r.yaw = yaw; r.pitch = pitch; r.crouch = c;
       g.position.set(x, y, z);
       g.rotation.y = yaw;
-      const m = r.model;
-      const spd = Math.min(1, r.speed / 5);
-      r.legT += dt * r.speed * 2.2;
-      const swing = Math.sin(r.legT) * 0.6 * spd;
-      m.legs[0].rotation.x = swing;
-      m.legs[1].rotation.x = -swing;
-      const hip = 0.85 - c * 0.5;
-      m.upper.position.y = hip;
-      for (const l of m.legs) { l.position.y = hip; l.scale.y = hip / 0.85; }
-      m.aim.rotation.x = pitch;
-      m.head.rotation.x = pitch * 0.5;
+      if (r.speed > 0.3) r.legT += dt * (3.5 + r.speed * 2.1);
+      r.model.update({ crouch: c, pitch, speed: r.speed, phase: r.legT, moveX: r.mx, moveZ: r.mz, air: r.air, time: now / 1000 + r.id });
+      r.nameSprite.position.y = 2.02 - c * 0.5;
       if (r.speed > 4.2 && !inAir && Math.abs(x - camera.position.x) + Math.abs(z - camera.position.z) < 40) {
         r.stepT -= dt;
         if (r.stepT <= 0) { r.stepT = 0.36; sfx.step(new THREE.Vector3(x, y, z), 1); }
       }
-      const off = c * 0.5;
-      r.hitboxes = [
-        { zone: 'head', min: [x - 0.16, y + 1.47 - off, z - 0.16], max: [x + 0.16, y + 1.78 - off, z + 0.16] },
-        { zone: 'body', min: [x - 0.27, y + 0.85 - off, z - 0.27], max: [x + 0.27, y + 1.47 - off, z + 0.27] },
-        { zone: 'legs', min: [x - 0.22, y, z - 0.22], max: [x + 0.22, y + 0.85 - off, z + 0.22] },
-      ];
+      r.hitboxes = playerHitboxes(x, y, z, c);
     } else r.hitboxes = [];
-    if (r.dead) {
-      const f = Math.min(1, (now - r.deathT) / 450);
-      g.rotation.x = f * f * Math.PI * 0.49;
-      g.position.y = r.y + f * 0.13;
+    // Ölüm animasyonu bitince duruş sabit kalır: boşuna hesaplanmaz
+    if (r.dead && !r.deathDone) {
+      const f = (now - r.deathT) / 650;
+      r.model.updateDeath(f, r.crouch);
+      r.deathDone = f >= 1;
     }
     r.nameSprite.visible = r.alive && !isEnemy(r);
   }
@@ -572,7 +574,7 @@ function onKill(m) {
     hud.spec(suicide ? 'Öldün' : `<b>${esc(kName)}</b> seni ${esc(wName)} ile öldürdü${m.hs ? ' (kafadan!)' : ''}`);
   } else {
     const r = remotes.get(m.v);
-    if (r && r.model) { r.alive = false; r.dead = true; r.deathT = performance.now(); }
+    if (r && r.model) { r.alive = false; r.dead = true; r.deathDone = false; r.deathT = performance.now(); r.model.die(); }
   }
 }
 
