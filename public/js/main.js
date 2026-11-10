@@ -29,8 +29,8 @@ const baseFov = () => SETTINGS.fov;
 // "Otomatik"te kare hızı 55'in altına düşerse önce çözünürlük, sonra son işlem efektleri, en son gölgeler düşürülür (60 FPS hedefi).
 // Yüksek ve Ultra'da son işlem efektleri (post.js) açılır: MSAA, ışık parlaması, renk düzenleme; Ultra'da ortam gölgelendirmesi.
 const QUALITY = {
-  low: { ratio: 0.75, shadows: false, shadowSize: 1024, shadowRadius: 1, env: false, bump: false, post: false },
-  medium: { ratio: 1.0, shadows: true, shadowSize: 1024, shadowRadius: 1, env: true, bump: false, post: false },
+  low: { ratio: 0.75, shadows: false, shadowSize: 1024, shadowRadius: 1, env: false, bump: false, post: false, detail: false },
+  medium: { ratio: 1.0, shadows: true, shadowSize: 2048, shadowRadius: 1.2, env: true, bump: false, post: false },
   high: { ratio: 1.5, shadows: true, shadowSize: 4096, shadowRadius: 1.6, env: true, bump: true, post: true, bloom: true, msaa: 4 },
   ultra: { ratio: 2.0, shadows: true, shadowSize: 4096, shadowRadius: 2, env: true, bump: true, post: true, bloom: true, msaa: 4, gtao: true },
 };
@@ -46,7 +46,7 @@ const perf = { frames: 0, t0: 0, scale: 1, goodFor: 0, fps: 60 };
 function worldOpts() {
   const q = QUALITY[qualityLevel()];
   const shadowSize = Math.min(q.shadowSize, renderer.capabilities.maxTextureSize);
-  return { renderer, shadows: q.shadows, shadowSize, shadowRadius: q.shadowRadius, env: q.env, bump: q.bump, lowSpec: IS_TOUCH, hdr: q.bloom ? 3 : 1 };
+  return { renderer, shadows: q.shadows, shadowSize, shadowRadius: q.shadowRadius, env: q.env, bump: q.bump, detail: q.detail !== false, lowSpec: IS_TOUCH, hdr: q.bloom ? 3 : 1 };
 }
 function applyPixelRatio() {
   const q = QUALITY[qualityLevel()];
