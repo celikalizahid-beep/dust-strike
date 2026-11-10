@@ -225,20 +225,35 @@ function saveSettings() {
 }
 
 // ---------------------------------------------------------------- Ağ
-let ws = null;
+// Tarayıcının kalıcı kimliği: sunucu, sayfayı yenileyen ya da bağlantısı kopup dönen oyuncuyu aynı IP'den gelen
+// ikinci bir oyuncudan bununla ayırır (aynı kimlikle yeniden girince eski bağlantı düşer, kimse cezalandırılmaz).
+function clientId() {
+  let id = null;
+  try { id = localStorage.getItem('dust-cid'); } catch { /* depolama kapalı */ }
+  if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+    try { localStorage.setItem('dust-cid', id); } catch { /* yok say */ }
+  }
+  return id;
+}
+const CID = clientId();
+const withReason = (m) => (m.reason ? `${m.text} Sebep: ${m.reason}.` : m.text);
+
+let ws = null, banned = false;
 function connect() {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
-  ws.onopen = () => hud.menuStatus('Sunucuya bağlandı — takımını seç');
   ws.onclose = () => {
-    hud.menuStatus('Sunucu bağlantısı koptu, yeniden deneniyor…');
+    hud.menuStatus(banned ? 'Bu IP adresi yasaklı. Ban kaldırılırsa oyun kendiliğinden bağlanır.' : 'Sunucu bağlantısı koptu, yeniden deneniyor…');
     S.joined = false; S.alive = false;
     for (const id of [...remotes.keys()]) removeRemote(id);
     S.roster.clear();
     hud.setVisible(false); setPause(false); hud.closeBuy(); hud.showMenu(true);
+    menuOpen = false;
     if (touch) touch.setVisible(false);
     document.body.classList.remove('playing');
     if (document.pointerLockElement) document.exitPointerLock();
-    setTimeout(connect, 2000);
+    // Banlıyken sunucu boşuna yoklanmaz: seyrek dene (ban kaldırılınca oyuncu sayfayı yenilemeden girebilsin)
+    setTimeout(connect, banned ? 15000 : 2000);
   };
   ws.onmessage = (e) => {
     let m;
@@ -251,10 +266,22 @@ function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
 function onMessage(m) {
   const now = performance.now();
   switch (m.t) {
-    case 'welcome': S.myId = m.id; break;
+    case 'welcome':
+      // Banlı adrese 'welcome' gelmez: bu mesaj bağlantının kabul edildiğini gösterir
+      S.myId = m.id;
+      if (banned) { banned = false; hud.menuNotice(''); }
+      hud.menuStatus('Sunucuya bağlandı — takımını seç');
+      break;
+    case 'banned':
+      banned = true;
+      hud.menuNotice(`${withReason(m)} Bir yanlışlık olduğunu düşünüyorsan sunucu yöneticisine yaz.`);
+      break;
+    case 'kicked': hud.menuNotice(withReason(m)); break;
+    case 'replaced': hud.menuNotice(`${m.text} Bu sekmede oynamak için yeniden gir.`); break;
     case 'rooms': S.rooms = m.rooms; refreshMenu(); break;
     case 'room':
       // Başka bir moda geçildi: eski odanın oyuncularını ve efektlerini temizle
+      hud.menuNotice('');
       S.mode = m.mode;
       loadMap(m.map || 'kum');
       for (const id of [...remotes.keys()]) removeRemote(id);
@@ -270,7 +297,8 @@ function onMessage(m) {
       if (touch) touch.setVisible(false);
       menuOpen = false;
       hud.showMenu(true);
-      hud.menuStatus(m.text);
+      hud.menuNotice(m.text);
+      document.body.classList.remove('playing');
       if (document.pointerLockElement) document.exitPointerLock();
       break;
     case 'state': {
@@ -1332,7 +1360,7 @@ for (const btn of document.querySelectorAll('[data-team]')) {
     const mode = view.settings.mode, map = view.settings.map;
     view.settings.name = nameInput.value.trim().slice(0, 16);
     saveSettings();
-    if (!S.joined || mode !== S.mode || map !== MAP.id) send({ t: 'join', name: view.settings.name, mode, map, team });
+    if (!S.joined || mode !== S.mode || map !== MAP.id) send({ t: 'join', name: view.settings.name, mode, map, team, cid: CID });
     else send({ t: 'team', team });
     S.joined = true;
     menuOpen = false;

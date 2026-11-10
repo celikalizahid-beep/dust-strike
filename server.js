@@ -9,12 +9,23 @@ import { WebSocketServer } from 'ws';
 import { buildMap, MAPS, MAP_IDS } from './public/shared/map.js';
 import { WEAPONS, ITEMS, ATTACHMENTS, DEFAULT_PISTOL, calcDamage, blastDamage, canAttach, attCode } from './public/shared/weapons.js';
 import { raycastWorld, stepNade, groundAt, NADE_DT, NADE_FUSE } from './public/shared/physics.js';
+import { clientAddress, parseTrust } from './server/ip.js';
+import { AdminStore } from './server/store.js';
+import { createAdminApi, EventLog } from './server/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const THREE_DIR = path.join(__dirname, 'node_modules', 'three', 'build');
 const THREE_ADDONS_DIR = path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm');
+
+// Yönetim: ban listesi ve ayarlar DATA_DIR/admin.json içinde saklanır; admin paneli /admin adresindedir.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const TRUST = parseTrust(process.env); // vekil (Render, tünel) arkasında gerçek istemci IP'si nasıl bulunur
+const HEARTBEAT_MS = Number(process.env.HEARTBEAT_MS) || 15000; // yanıt vermeyen bağlantıların ayıklanma aralığı
+const store = new AdminStore({ dir: DATA_DIR, env: process.env });
+const events = new EventLog();
+const CLOSE = { KICKED: 4001, REPLACED: 4002, BANNED: 4003 }; // WebSocket kapanış kodları
 
 // Oyun ayarları (saniye)
 const FREEZE_TIME = 5;
@@ -63,6 +74,15 @@ const httpServer = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
     return res.end(JSON.stringify({ uptime: Math.round(process.uptime()), clients: clients.size, rooms: busy, tickAvgMs: +stats.avg.toFixed(2), tickMaxMs: +stats.max.toFixed(2), lateTicks: stats.late, memMB: Math.round(process.memoryUsage().rss / 1048576) }));
   }
+  if (urlPath.startsWith('/admin/api/')) return adminApi(req, res, urlPath.slice('/admin/api'.length));
+  const extra = {};
+  if (urlPath === '/admin' || urlPath === '/admin/') {
+    // Admin sayfası başka sitelerin içine gömülemez, kendi dosyaları dışında betik çalıştıramaz
+    urlPath = '/admin.html';
+    extra['X-Frame-Options'] = 'DENY';
+    extra['Referrer-Policy'] = 'no-referrer';
+    extra['Content-Security-Policy'] = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+  }
   let root = PUBLIC_DIR;
   if (urlPath.startsWith('/three/addons/')) { root = THREE_ADDONS_DIR; urlPath = urlPath.slice('/three/addons'.length); }
   else if (urlPath.startsWith('/three/')) { root = THREE_DIR; urlPath = urlPath.slice('/three'.length); }
@@ -71,7 +91,7 @@ const httpServer = http.createServer((req, res) => {
   if (!file.startsWith(root + path.sep)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Bulunamadı'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', ...extra });
     res.end(data);
   });
 });
@@ -101,6 +121,102 @@ function youMsg(p) {
   };
 }
 const sendYou = (p) => send(p, youMsg(p));
+// Tarayıcının kalıcı kimliği (istemci üretir): aynı tarayıcının yeniden bağlanmasını ikinci bir oyuncudan ayırır
+const cleanCid = (v) => (typeof v === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : null);
+
+// ---------------------------------------------------------------- Bağlantı yönetimi, banlar ve aynı IP kuralı
+// Oyuncuyu odadan ve istemci listesinden çıkarır (bir kez). Bağlantı kapanınca ya da oyuncu düşürülünce çağrılır.
+function detach(p) {
+  if (p.gone) return;
+  p.gone = true;
+  clients.delete(p.id);
+  if (p.room) {
+    events.add('leave', `${p.name} ayrıldı (${p.room.key})`, p.addr.key);
+    p.room.remove(p);
+  } else broadcastRooms();
+}
+// Bağlantıyı bir mesajla kapatır. Oyuncu hemen oyundan çıkarılır; kapanışı onaylamayan istemci 2 sn sonra koparılır.
+function drop(p, msg, code) {
+  send(p, msg);
+  detach(p);
+  p.ws.close(code);
+  setTimeout(() => p.ws.terminate(), 2000).unref();
+}
+const bannedMsg = (ban) => ({ t: 'banned', text: 'Bu IP adresi sunucudan yasaklandı.', reason: ban.reason || '' });
+
+// IP'yi banlar ve o adresten bağlı herkesi düşürür. key: IPv4 adresi ya da IPv6 /64 ağı (server/ip.js ipKey)
+function banIp(key, { reason = '', by = 'admin', names = [] } = {}) {
+  const ban = store.ban(key, { reason, by, names });
+  events.add('ban', `${key} banlandı (${by})${reason ? ': ' + reason : ''}${names.length ? ' · ' + names.join(', ') : ''}`, key);
+  for (const p of [...clients.values()]) if (p.addr.reliable && p.addr.key === key) drop(p, bannedMsg(ban), CLOSE.BANNED);
+  return ban;
+}
+function unbanIp(key) {
+  const ban = store.banOf(key);
+  if (!ban) return 'none';
+  if (ban.fixed) return 'fixed';
+  store.unban(key);
+  events.add('unban', `${key} banı kaldırıldı`, key);
+  return 'ok';
+}
+
+// Aynı IP kuralı: bu bağlantı oyuna girebilir mi? Giremezse kurala göre engeller ya da IP'yi banlar ve false döner.
+// Adresi güvenilir bilinmeyen (tanınmayan vekil), yerel (bu bilgisayar) ve izinli adresler kuralın dışındadır.
+function ipGate(p) {
+  const rule = store.ipRule, a = p.addr;
+  if (rule === 'off' || !a.reliable || a.loopback || store.isAllowed(a.key)) return true;
+  const others = [];
+  for (const o of [...clients.values()]) {
+    if (o === p || !o.room || !o.addr.reliable || o.addr.key !== a.key) continue;
+    // Aynı tarayıcının eski bağlantısı (sayfa yenileme, kopan bağlantı): eskisi düşer, kimse cezalandırılmaz
+    if (p.cid && o.cid === p.cid) drop(o, { t: 'replaced', text: 'Bu tarayıcıyla başka bir sekmeden oyuna girildi.' }, CLOSE.REPLACED);
+    else others.push(o);
+  }
+  if (!others.length) return true;
+  const inGame = others.map((o) => o.name);
+  if (rule === 'block') {
+    events.add('block', `${a.ip}: ikinci oyuncu engellendi (${p.name}; oyunda: ${inGame.join(', ')})`, a.key);
+    send(p, { t: 'joinfail', text: 'Bu IP adresinden zaten bir oyuncu oyunda. Aynı ağdan ikinci oyuncu giremez.' });
+    return false;
+  }
+  banIp(a.key, { reason: 'Aynı IP adresinden ikinci oyuncu girişi', by: 'otomatik', names: [...new Set([...inGame, p.name])] });
+  return false;
+}
+
+// Admin panelinin oyunla konuştuğu arayüz (server/admin.js)
+const game = {
+  serverInfo: () => ({
+    uptime: Math.round(process.uptime()), clients: clients.size, memMB: Math.round(process.memoryUsage().rss / 1048576),
+    tickAvgMs: +stats.avg.toFixed(2), tickMaxMs: +stats.max.toFixed(2), render: !!process.env.RENDER,
+  }),
+  players: () => [...clients.values()].filter((p) => p.room).map((p) => ({
+    id: p.id, name: p.name, team: p.team, mode: p.room.mode, map: p.room.map.id,
+    ip: p.addr.ip, ipKey: p.addr.key, reliable: p.addr.reliable, local: p.addr.loopback, allowed: store.isAllowed(p.addr.key),
+    ping: p.ping, k: p.kills, d: p.deaths, alive: p.alive, since: p.since,
+  })),
+  lobbyCount: () => [...clients.values()].filter((p) => !p.room).length,
+  player(id) {
+    const p = clients.get(id);
+    return p ? { name: p.name, ipKey: p.addr.key, reliable: p.addr.reliable } : null;
+  },
+  kick(id, reason) {
+    const p = clients.get(id);
+    if (!p) return null;
+    events.add('kick', `${p.name} atıldı (${p.addr.ip})${reason ? ': ' + reason : ''}`, p.addr.key);
+    drop(p, { t: 'kicked', text: 'Yönetici tarafından oyundan atıldın.', reason }, CLOSE.KICKED);
+    return p.name;
+  },
+  banIp, unbanIp,
+  say(text) { for (const room of Object.values(rooms)) if (room.players.size) room.system(`[Yönetici] ${text}`); },
+  warnings() {
+    const out = [];
+    const unsure = [...clients.values()].filter((p) => !p.addr.reliable).length;
+    if (unsure) out.push(`${unsure} bağlantının IP adresi güvenilir biçimde belirlenemiyor; bu bağlantılara aynı IP kuralı ve ban uygulanmıyor. Sunucu bir vekilin (proxy) arkasındaysa TRUST_PROXY ortam değişkenini ayarla (OKUBENI.md).`);
+    if (!store.persistent) out.push('Ban listesi ve ayarlar diske yazılamıyor: sunucu kapanınca kaybolur. DATA_DIR klasörünü kontrol et.');
+    return out;
+  },
+};
+const adminApi = createAdminApi({ store, events, game, addressOf: (req) => clientAddress(req, TRUST) });
 
 // ---------------------------------------------------------------- Oda (bir oyun modu)
 class Room {
@@ -974,12 +1090,15 @@ function handle(p, m) {
   switch (m.t) {
     case 'join': {
       p.name = cleanName(m.name);
+      p.cid = cleanCid(m.cid);
       const mode = MODES[m.mode] ? m.mode : 'classic';
       const room = rooms[`${mode}:${m.map}`] || rooms[`${mode}:kum`];
       if (p.room === room) { if (room.cfg.teams) room.setTeam(p, m.team); break; }
+      if (!p.room && !ipGate(p)) break; // oyuna ilk giriş: aynı IP kuralı
       if (room.players.size >= room.cfg.max) { send(p, { t: 'joinfail', text: `${room.cfg.name} dolu (${room.cfg.max} kişi). Başka bir mod seç.` }); break; }
       if (p.room) p.room.remove(p);
       room.add(p, m.team);
+      events.add('join', `${p.name} katıldı (${room.key}) · ${p.addr.ip}`, p.addr.key);
       break;
     }
     case 'team':
@@ -1020,9 +1139,20 @@ setInterval(() => {
 
 // ---------------------------------------------------------------- WebSocket
 const wss = new WebSocketServer({ server: httpServer, maxPayload: 16 * 1024 });
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  ws.on('error', () => {});
+  const addr = clientAddress(req, TRUST);
+  const ban = addr.reliable ? store.banOf(addr.key) : null;
+  if (ban) {
+    // Banlı adres lobiye de giremez: sebebi bildirilir ve bağlantı kapatılır
+    ws.send(JSON.stringify(bannedMsg(ban)));
+    ws.close(CLOSE.BANNED);
+    setTimeout(() => ws.terminate(), 2000).unref();
+    return;
+  }
   const p = {
-    id: nextPlayerId++, ws, name: 'Oyuncu', team: 'SPEC', room: null, alive: false,
+    id: nextPlayerId++, ws, addr, cid: null, since: now(), gone: false, live: true,
+    name: 'Oyuncu', team: 'SPEC', room: null, alive: false,
     hp: 100, armor: 0, helmet: false, kit: false, money: START_MONEY,
     primary: null, secondary: null, lastPrimary: null, att: { 1: [], 2: [] }, lastAtt: [], nades: { he: 0, flash: 0, smoke: 0 },
     wid: { 1: 0, 2: 0 }, buys: [],
@@ -1033,16 +1163,25 @@ wss.on('connection', (ws) => {
   send(p, { t: 'welcome', id: p.id });
   send(p, roomsMsg());
   ws.on('message', (data) => {
+    if (p.gone) return;
+    p.live = true;
     let m;
     try { m = JSON.parse(data); } catch { return; }
     try { handle(p, m); } catch (err) { console.error('Mesaj hatası:', err); }
   });
-  ws.on('close', () => {
-    clients.delete(p.id);
-    if (p.room) p.room.remove(p); else broadcastRooms();
-  });
-  ws.on('error', () => {});
+  ws.on('pong', () => { p.live = true; });
+  ws.on('close', () => detach(p));
 });
+
+// Kopmuş bağlantıları ayıkla: iki yoklama arasında hiç yanıt (pong ya da mesaj) vermeyen bağlantı kapatılır.
+// Böylece bağlantısı kopan oyuncu oyunda "hayalet" olarak kalmaz ve aynı IP'den yeniden girişi engellemez.
+setInterval(() => {
+  for (const p of clients.values()) {
+    if (!p.live) { p.ws.terminate(); continue; }
+    p.live = false;
+    if (p.ws.readyState === 1) p.ws.ping();
+  }
+}, HEARTBEAT_MS);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log('\n  DUST STRIKE sunucusu çalışıyor! Modlar: Klasik, Takımlı Ölüm Maçı, Herkes Tek\n');
@@ -1052,5 +1191,10 @@ httpServer.listen(PORT, '0.0.0.0', () => {
       if (a.family === 'IPv4' && !a.internal) console.log(`  Aynı ağdaki arkadaşların:  http://${a.address}:${PORT}`);
     }
   }
+  console.log(`\n  Admin paneli:              http://localhost:${PORT}/admin`);
+  console.log(store.passwordSource === 'env'
+    ? '  Şifre:                     ADMIN_PASSWORD ortam değişkenindeki değer'
+    : `  Şifre:                     ${store.password}   (değiştirmek için ADMIN_PASSWORD ortam değişkenini ayarla)`);
+  console.log(`  Aynı IP kuralı:            ${{ ban: 'ikinci oyuncuyu engelle ve IP\'yi banla', block: 'ikinci oyuncuyu engelle', off: 'kapalı' }[store.ipRule]}`);
   console.log('\n  Kapatmak için bu pencerede Ctrl+C\n');
 });
