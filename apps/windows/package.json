@@ -16,7 +16,7 @@
   "build": {
     "appId": "com.duststrike.app",
     "productName": "DUST STRIKE",
-    "files": ["main.cjs", "icon.png"],
+    "files": ["main.cjs", "preload.cjs", "icon.png"],
     "win": { "target": "portable", "icon": "icon.png" },
     "portable": { "artifactName": "DustStrike.exe" }
   }

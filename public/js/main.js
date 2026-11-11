@@ -208,12 +208,14 @@ function setPause(v) {
 // Masaüstünde fare kilitliyken, telefonda menü açık değilken kontroller aktif
 const controlsOn = () => (IS_TOUCH ? S.joined && !pauseOpen && !menuOpen : locked);
 
+// Windows uygulamasında (Electron) uygulama ayarlarına köprü; tarayıcıda yoktur
+const APP = window.dustApp || null;
 function loadSettings() {
   let s = {};
   try { s = JSON.parse(localStorage.getItem('dust-settings') || '{}'); } catch { /* yok say */ }
   return {
     sens: s.sens ?? 1.6, vol: s.vol ?? 0.6, name: s.name ?? '', mode: s.mode ?? 'classic', map: s.map ?? 'kum',
-    quality: s.quality ?? 'auto', showFps: s.showFps ?? false, fov: s.fov ?? 74, bright: s.bright ?? 1, invY: s.invY ?? false,
+    quality: s.quality ?? 'auto', showFps: s.showFps ?? false, fpsUnlock: s.fpsUnlock ?? false, fov: s.fov ?? 74, bright: s.bright ?? 1, invY: s.invY ?? false,
     ch: { ...CH_DEFAULT, ...(s.ch || {}) },
     gyro: s.gyro ?? false, gyroSens: s.gyroSens ?? 1.0, gyroAxes: s.gyroAxes ?? 'spec',
     // Eksen düzeltmesiyle ters çevirme ayarlarının anlamı değişti: eski kayıtlarda bir kez sıfırlanır
@@ -1633,6 +1635,23 @@ const qualityNote = () => { $id('qualityNote').textContent = QUALITY_NOTE[SETTIN
 qualityEl.value = SETTINGS.quality;
 qualityNote();
 qualityEl.addEventListener('change', () => { setQuality(qualityEl.value); qualityNote(); });
+{
+  const note = $id('fpsUnlockNote');
+  const say = () => {
+    note.textContent = APP
+      ? (APP.fpsUnlock ? 'Açık: uygulama kareleri ekranı beklemeden çiziyor.' : 'Değiştirince uygulama kendini yeniden başlatır.')
+      : (SETTINGS.fpsUnlock ? 'Açık: oyun ekranı beklemeden çiziyor (en fazla ~250 FPS). Ekranın 60 Hz ise göreceğin kare yine 60\'tır; kazanç daha düşük gecikmedir. Bilgisayar ısınırsa kapat.' : 'Kapalıyken FPS ekranın yenileme hızıyla sınırlıdır. Tam sınırsız için Windows uygulamasını kullan.');
+  };
+  if (APP) SETTINGS.fpsUnlock = !!APP.fpsUnlock;
+  checkbox('fpsUnlock', () => SETTINGS.fpsUnlock, (v) => {
+    SETTINGS.fpsUnlock = v;
+    if (v) SETTINGS.showFps = true;
+    $id('showFps').checked = SETTINGS.showFps;
+    say();
+    if (APP) { saveSettings(); APP.setFpsUnlock(v); }
+  });
+  say();
+}
 checkbox('showFps', () => SETTINGS.showFps, (v) => { SETTINGS.showFps = v; hud.fps(v ? perf.fps : null); });
 
 // Jiroskop: telefonu çevirerek nişan alma (Android ve iOS)
@@ -1786,8 +1805,15 @@ setInterval(() => send({ t: 'ping', ts: performance.now(), rtt: S.rtt }), 2000);
 const tmpF = new THREE.Vector3(), tmpUp = new THREE.Vector3();
 let last = performance.now(), lastSend = 0;
 
+// FPS sınırı: tarayıcı kareleri normalde ekranın yenileme hızına kilitler (60 Hz ekranda 60 FPS).
+// "Sınırı kaldır" açıkken kareler ekranı beklemeden çizilir (tarayıcıda en fazla ~250 FPS). Windows uygulamasında
+// sınır uygulamanın kendisinde kaldırılır (dikey eşitleme kapanır), o yüzden orada olağan döngü kullanılır.
+function nextFrame() {
+  if (SETTINGS.fpsUnlock && !APP && !IS_TOUCH && !document.hidden) setTimeout(() => frame(performance.now()), 0);
+  else requestAnimationFrame(frame);
+}
 function frame(now) {
-  requestAnimationFrame(frame);
+  nextFrame();
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
