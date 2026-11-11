@@ -24,7 +24,7 @@ export async function startServer(env = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dust-server-'));
   const child = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: { PATH: process.env.PATH, PORT: String(port), DATA_DIR: dataDir, ADMIN_PASSWORD: PASSWORD, TRUST_PROXY: 'x-forwarded-for', ...env },
+    env: { PATH: process.env.PATH, PORT: String(port), DATA_DIR: dataDir, ADMIN_PASSWORD: PASSWORD, TRUST_PROXY: 'x-forwarded-for', BOTS: '0', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';

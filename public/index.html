@@ -139,6 +139,28 @@
   .secondary, #resumeBtn { width: 100%; margin-top: 12px; padding: 10px; background: rgba(255,178,40,.12); color: var(--hud); border: 1px solid var(--hud-dim); }
   #resumeBtn { background: var(--hud); color: #1a1408; font-weight: bold; border: 0; }
   #menuStatus { margin-top: 14px; font-size: 12px; color: #aaa; text-align: center; }
+  #roomBox { margin-top: 16px; padding-top: 4px; border-top: 1px solid rgba(255,178,40,.25); }
+  #roomBox label small { opacity: .7; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .roomrow { display: flex; gap: 8px; margin-top: 8px; }
+  .roomrow select, .roomrow input { flex: 1; min-width: 0; padding: 10px; background: rgba(0,0,0,.45); color: #fff; border: 1px solid var(--hud-dim); border-radius: 3px; font: inherit; }
+  .roomrow input { text-transform: uppercase; letter-spacing: 3px; text-align: center; }
+  .roomrow button { flex: 1; padding: 10px; background: rgba(255,178,40,.22); color: var(--hud); border: 1px solid var(--hud); font-weight: 700; cursor: pointer; }
+  .roomrow button:hover { background: rgba(255,178,40,.36); }
+  .roomhint { display: block; margin-top: 6px; opacity: .6; font-size: 12px; }
+  #roomIn { display: none; margin-top: 14px; padding: 10px 12px; text-align: center; border: 1px solid var(--hud-dim); background: rgba(255,178,40,.08); }
+  .roomCode { letter-spacing: 3px; color: var(--hud); font-size: 1.15em; }
+  #menu.inroom #roomIn { display: block; }
+  #menu.inroom #roomBox, #menu.inroom .modes, #menu.inroom #mapPick, #menu.inroom .modes + label, #menu.inroom label:has(+ .modes) { display: none; }
+  #pauseRoom { margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,178,40,.25); font-size: 14px; }
+  .roomline { margin-top: 6px; }
+  #roomCopy { margin-left: 8px; padding: 4px 8px; background: transparent; color: var(--hud); border: 1px solid var(--hud-dim); cursor: pointer; font-size: 12px; }
+  #voiceModes { display: flex; gap: 6px; margin-top: 6px; }
+  #voiceModes button { flex: 1; padding: 9px 4px; background: rgba(0,0,0,.4); color: #ddd; border: 1px solid var(--hud-dim); cursor: pointer; }
+  #voiceModes button.sel { background: rgba(255,178,40,.3); color: var(--hud); border-color: var(--hud); font-weight: 700; }
+  #voiceNote { display: block; margin-top: 6px; opacity: .75; min-height: 1.2em; }
+  #micHud { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); z-index: 6; padding: 3px 10px; font-size: 12px; color: #bbb; background: rgba(0,0,0,.4); border-radius: 10px; pointer-events: none; }
+  #micHud.live { color: #7dff8a; background: rgba(0,60,10,.55); }
+  #micHud.hidden { display: none; }
   #menuNotice { margin-top: 14px; padding: 10px 12px; font-size: 13px; line-height: 1.5; color: #ffd0c8; background: rgba(200, 40, 20, .18); border: 1px solid rgba(255, 106, 90, .6); border-radius: 4px; text-align: center; }
   .dl { display: flex; gap: 8px; margin-top: 10px; }
   .dlbtn { flex: 1; padding: 9px; text-align: center; font-size: 12px; color: #9fd8ff; background: rgba(60,140,255,.12); border: 1px solid rgba(120,180,255,.45); border-radius: 4px; text-decoration: none; cursor: pointer; font-family: inherit; }
@@ -353,6 +375,7 @@
 <div id="scope" class="hidden"></div>
 <div id="flash"></div>
 <div id="hurt"></div>
+<div id="micHud" class="hidden"></div>
 <div id="touch" class="hidden"></div>
 
 <div id="scoreboard" class="overlay hidden" style="background:transparent; pointer-events:none">
@@ -391,6 +414,24 @@
     <div id="ffaPick" class="hidden">
       <button class="team ffa" data-team="auto"><b>OYUNA GİR</b><small>Herkes herkese karşı · ölünce yeniden doğarsın</small></button>
     </div>
+    <div id="roomBox">
+      <label>Özel oda <small>(arkadaşlarınla · kodu bilen girer · sesli sohbet var)</small></label>
+      <div class="roomrow">
+        <select id="roomBots" title="Odadaki bot sayısı">
+          <option value="0">Botsuz</option><option value="1">1 bot</option><option value="3" selected>3 bot</option><option value="5">5 bot</option><option value="7">7 bot</option><option value="9">9 bot</option>
+        </select>
+        <button id="roomCreate" type="button">ODA KUR</button>
+      </div>
+      <form id="roomJoinForm" class="roomrow">
+        <input id="roomCodeInput" maxlength="6" placeholder="Oda kodu" autocomplete="off" autocapitalize="characters">
+        <button type="submit">KODLA GİR</button>
+      </form>
+      <small class="roomhint">Oda, yukarıda seçtiğin mod ve haritayla kurulur.</small>
+    </div>
+    <div id="roomIn">
+      Özel odadasın · kod: <b class="roomCode"></b>
+      <button id="roomLeave" class="secondary" type="button">Odadan çık (herkese açık odalara dön)</button>
+    </div>
     <div id="menuNotice" class="hidden" role="alert"></div>
     <div id="menuStatus">Sunucuya bağlanılıyor…</div>
     <div class="dl">
@@ -414,7 +455,7 @@
       <b>B</b><span>Satın alma menüsü (doğuş alanında, raund başında)</span>
       <b>E</b><span>Basılı tut: bomba kur (T) / imha et (CT)</span>
       <b>Tab</b><span>Skor tablosu · <b>Y</b> sohbet · <b>U</b> takım sohbeti · <b>M</b> takım değiştir</span>
-      <b>V</b><span>Kendini önden gör (aç / kapat)</span>
+      <b>V</b><span>Kendini önden gör (aç / kapat) · <b>K</b> basılı tut: sesli konuş (özel odada)</span>
     </div>
   </div>
 </div>
@@ -425,6 +466,16 @@
     <button id="resumeBtn">Oyuna dön</button>
     <button id="pauseSettings" class="secondary">⚙ Ayarlar (nişangah, grafik, ses, kontroller)</button>
     <button id="teamBtn" class="secondary">Takım / mod / harita değiştir (M)</button>
+    <div id="pauseRoom" class="hidden">
+      <div class="roomline">Özel oda kodu: <b class="roomCode"></b> <button id="roomCopy" type="button">Bağlantıyı kopyala</button></div>
+      <div class="roomline">Sesli sohbet</div>
+      <div id="voiceModes">
+        <button type="button" data-voice="off">Kapalı</button>
+        <button type="button" data-voice="ptt" class="desktop-only">Bas-konuş (K)</button>
+        <button type="button" data-voice="open">Açık mikrofon</button>
+      </div>
+      <small id="voiceNote"></small>
+    </div>
     <div class="controls desktop-only">
       <b>Tab</b><span>Skor tablosu</span>
       <b>B</b><span>Satın al (Eklentiler: 5)</span>

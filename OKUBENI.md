@@ -99,6 +99,23 @@ kendiliğinden doğru bulunur. Başka bir barındırma hizmeti ya da kendi vekil
 bulunamıyorsa panel uyarı gösterir ve o bağlantılara kural ile ban **uygulanmaz** (yanlış ayar yüzünden herkesin aynı
 IP sayılıp banlanmasını önlemek için).
 
+## Botlar, özel odalar, sesli sohbet, öldüren kamerası
+
+- **Botlar:** Herkese açık odalarda oyuncu azsa sunucu odayı botlarla doldurur (varsayılan: odada toplam 4 kişi olana
+  kadar). Gerçek oyuncu geldikçe botlar yerini bırakır; oda boşalınca botlar da gider. Sayıyı `BOTS` ortam değişkeniyle
+  ayarlarsın (`BOTS=0` botları kapatır). Botlar gezer, silah alır, ateş eder, klasik modda bomba kurar / imha eder.
+  Skor tablosunda ping yerine **BOT** yazar; admin panelinde görünmezler.
+- **Özel oda:** Menünün altındaki **ODA KUR** ile, seçili mod ve haritada yalnızca kodu bilenlerin girebildiği bir oda
+  açılır (bot sayısını 0–9 arasında sen seçersin). 6 karakterlik kod duraklatma menüsünde (Esc) yazar; **Bağlantıyı
+  kopyala** ile arkadaşına gönderebilirsin (`…/?oda=KOD`). Arkadaşın kodu yazıp **KODLA GİR** der. Özel odalar herkese
+  açık listede görünmez, son kişi çıkınca kapanır.
+- **Sesli sohbet (yalnızca özel odada):** Duraklatma menüsünden açılır: *Kapalı* / *Bas-konuş (K tuşu basılıyken)* /
+  *Açık mikrofon*. Tarayıcı mikrofon izni ister. Ses oyuncular arasında doğrudan akar (WebRTC), sunucu yalnızca
+  bağlantıyı kurdurur. Sesi duymak için de sohbeti açmış olman gerekir. Site https olmalı (Render'da öyle; `localhost`
+  da çalışır). Çok kısıtlı ağlarda (bazı okul/şirket ağları) bağlantı kurulamayabilir.
+- **Öldüren kamerası:** Ölünce, kısa düşüşün ardından kamera seni öldüren oyuncunun omzunun arkasına geçer
+  (yaklaşık 3 saniye ya da yeniden doğana kadar).
+
 ## Oyun modları
 
 Menüden mod seçilir; üç mod aynı anda oynanabilir (her biri ayrı oda).

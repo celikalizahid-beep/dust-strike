@@ -12,6 +12,7 @@ import { raycastWorld, stepNade, groundAt, NADE_DT, NADE_FUSE } from './public/s
 import { clientAddress, parseTrust } from './server/ip.js';
 import { AdminStore } from './server/store.js';
 import { createAdminApi, EventLog } from './server/admin.js';
+import { updateBot, newBrain, BOT_NAMES } from './server/bots.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -23,6 +24,9 @@ const THREE_ADDONS_DIR = path.join(__dirname, 'node_modules', 'three', 'examples
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const TRUST = parseTrust(process.env); // vekil (Render, tünel) arkasında gerçek istemci IP'si nasıl bulunur
 const HEARTBEAT_MS = Number(process.env.HEARTBEAT_MS) || 15000; // yanıt vermeyen bağlantıların ayıklanma aralığı
+// Genel odalar en az bu kadar oyuncuya botlarla tamamlanır (içeride insan varken). 0: genel odalarda bot yok.
+const BOT_FILL = Math.max(0, Math.min(10, process.env.BOTS === undefined ? 4 : Number(process.env.BOTS) || 0));
+const MAX_PRIVATE_ROOMS = 30;
 const store = new AdminStore({ dir: DATA_DIR, env: process.env });
 const events = new EventLog();
 const CLOSE = { KICKED: 4001, REPLACED: 4002, BANNED: 4003 }; // WebSocket kapanış kodları
@@ -132,7 +136,7 @@ function detach(p) {
   clients.delete(p.id);
   if (p.room) {
     events.add('leave', `${p.name} ayrıldı (${p.room.key})`, p.addr.key);
-    p.room.remove(p);
+    leaveRoom(p);
   } else broadcastRooms();
 }
 // Bağlantıyı bir mesajla kapatır. Oyuncu hemen oyundan çıkarılır; kapanışı onaylamayan istemci 2 sn sonra koparılır.
@@ -220,9 +224,12 @@ const adminApi = createAdminApi({ store, events, game, addressOf: (req) => clien
 
 // ---------------------------------------------------------------- Oda (bir oyun modu)
 class Room {
-  constructor(mode, mapId) {
+  // code verilirse özel odadır: genel listede görünmez, kodla girilir, boşalınca kapanır
+  constructor(mode, mapId, code = null, bots = BOT_FILL) {
     this.mode = mode;
-    this.key = `${mode}:${mapId}`;
+    this.code = code;
+    this.botCount = bots; // özel odada bot sayısı; genel odada oyuncuların tamamlanacağı sayı
+    this.key = code ? `ozel:${code}` : `${mode}:${mapId}`;
     this.map = buildMap(mapId);
     this.cfg = MODES[mode];
     this.dm = mode !== 'classic';
@@ -265,7 +272,7 @@ class Room {
     };
   }
   rosterMsg() {
-    return { t: 'roster', ps: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, k: p.kills, d: p.deaths, alive: p.alive, ping: p.ping })) };
+    return { t: 'roster', ps: [...this.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, k: p.kills, d: p.deaths, alive: p.alive, ping: p.ping, ...(p.bot ? { bot: true } : {}), ...(p.voice ? { voice: true } : {}) })) };
   }
   bombMsg() {
     const b = this.bomb;
@@ -287,7 +294,7 @@ class Room {
     this.players.set(p.id, p);
     p.kills = 0; p.deaths = 0; p.alive = false; p.lastPrimary = null; p.team = null;
     p.money = this.dm ? MAX_MONEY : START_MONEY;
-    send(p, { t: 'room', mode: this.mode, map: this.map.id });
+    send(p, { t: 'room', mode: this.mode, map: this.map.id, code: this.code });
     this.setTeam(p, team, true);
   }
 
@@ -299,6 +306,7 @@ class Room {
     p.room = null;
     p.alive = false;
     p.team = 'SPEC';
+    if (p.voice) { p.voice = false; this.broadcast({ t: 'voiceleave', id: p.id }); }
     this.broadcast({ t: 'leave', id: p.id });
     this.system(`${p.name} ayrıldı`);
     this.broadcast(this.rosterMsg());
@@ -1054,7 +1062,27 @@ class Room {
     this.broadcast({ t: 'snap', ps });
   }
 
+  // ---------------- Botlar: içeride insan varken eksik oyuncuyu tamamlar, son insan çıkınca hepsi çıkar
+  humans() { let n = 0; for (const p of this.players.values()) if (!p.bot) n++; return n; }
+  syncBots() {
+    const humans = this.humans();
+    const bots = [...this.players.values()].filter((p) => p.bot);
+    let want = !humans ? 0 : this.code ? this.botCount : Math.max(0, this.botCount - humans);
+    want = Math.min(want, this.cfg.max - humans);
+    while (bots.length > want) this.remove(bots.pop());
+    for (let i = bots.length; i < want; i++) {
+      const used = new Set([...this.players.values()].map((p) => p.name));
+      const name = 'Bot ' + (BOT_NAMES.find((n) => !used.has('Bot ' + n)) || nextPlayerId);
+      const bot = makePlayer({ readyState: 3, send() {} }, null, name);
+      bot.bot = true;
+      bot.ai = newBrain();
+      this.add(bot, 'auto');
+    }
+  }
+
   tick(t, dt) {
+    if (t - (this.botSync || 0) > 1000) { this.botSync = t; this.syncBots(); }
+    for (const p of this.players.values()) if (p.bot) updateBot(p, this, dt, t, botApi);
     this.updatePhase(t);
     this.updateBomb(t);
     this.updateItems(t);
@@ -1073,9 +1101,33 @@ class Room {
 const rooms = {};
 for (const mapId of MAP_IDS) for (const mode of MAPS[mapId].modes) rooms[`${mode}:${mapId}`] = new Room(mode, mapId);
 
+const botApi = { handle: (bot, m) => bot.room && bot.room.handle(bot, m) };
+
+// Özel oda kodu: karışmayan harf ve rakamlardan 6 hane
+function newRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (;;) {
+    const code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    if (!rooms[`ozel:${code}`]) return code;
+  }
+}
+// Son insanı da çıkan özel oda kapanır (botlarıyla birlikte)
+function closeIfEmpty(room) {
+  if (!room.code || room.humans() > 0 || !rooms[room.key]) return;
+  delete rooms[room.key];
+  for (const p of [...room.players.values()]) room.players.delete(p.id);
+}
+function leaveRoom(p) {
+  const room = p.room;
+  if (!room) return;
+  room.remove(p);
+  closeIfEmpty(room);
+}
+
 function roomsMsg() {
   const r = {};
   for (const [k, room] of Object.entries(rooms)) {
+    if (room.code) continue;
     r[k] = { mode: room.mode, map: room.map.id, T: room.teamOf('T').length, CT: room.teamOf('CT').length, total: room.players.size, max: room.cfg.max, phase: room.phase };
   }
   return { t: 'rooms', rooms: r };
@@ -1092,18 +1144,56 @@ function handle(p, m) {
       p.name = cleanName(m.name);
       p.cid = cleanCid(m.cid);
       const mode = MODES[m.mode] ? m.mode : 'classic';
-      const room = rooms[`${mode}:${m.map}`] || rooms[`${mode}:kum`];
+      let room;
+      if (m.code !== undefined) {
+        // Özel odaya kodla giriş
+        room = rooms[`ozel:${String(m.code).trim().toUpperCase().slice(0, 6)}`];
+        if (!room) { send(p, { t: 'joinfail', text: 'Bu kodla bir oda bulunamadı. Kodu kontrol et; oda boşaldıysa kapanmış olabilir.' }); break; }
+      } else room = rooms[`${mode}:${m.map}`] || rooms[`${mode}:kum`];
       if (p.room === room) { if (room.cfg.teams) room.setTeam(p, m.team); break; }
       if (!p.room && !ipGate(p)) break; // oyuna ilk giriş: aynı IP kuralı
-      if (room.players.size >= room.cfg.max) { send(p, { t: 'joinfail', text: `${room.cfg.name} dolu (${room.cfg.max} kişi). Başka bir mod seç.` }); break; }
-      if (p.room) p.room.remove(p);
+      if (room.humans() >= room.cfg.max) { send(p, { t: 'joinfail', text: `${room.code ? 'Oda' : room.cfg.name} dolu (${room.cfg.max} kişi).` }); break; }
+      if (room.players.size >= room.cfg.max) room.remove([...room.players.values()].find((o) => o.bot)); // bot yer açar
+      leaveRoom(p);
       room.add(p, m.team);
       events.add('join', `${p.name} katıldı (${room.key}) · ${p.addr.ip}`, p.addr.key);
+      break;
+    }
+    case 'create': {
+      // Özel oda kur: seçilen mod ve harita, isteğe bağlı botlar. Kodu bilen girer.
+      p.name = cleanName(m.name);
+      p.cid = cleanCid(m.cid);
+      const mode = MODES[m.mode] ? m.mode : 'classic';
+      const mapId = MAPS[m.map] && MAPS[m.map].modes.includes(mode) ? m.map : 'kum';
+      if (!p.room && !ipGate(p)) break;
+      if (Object.values(rooms).filter((r) => r.code).length >= MAX_PRIVATE_ROOMS) { send(p, { t: 'joinfail', text: 'Şu an çok fazla özel oda açık. Biraz sonra tekrar dene.' }); break; }
+      const room = new Room(mode, mapId, newRoomCode(), Math.max(0, Math.min(9, m.bots | 0)));
+      rooms[room.key] = room;
+      leaveRoom(p);
+      room.add(p, m.team);
+      events.add('join', `${p.name} özel oda kurdu (${room.code}, ${mode}:${mapId}) · ${p.addr.ip}`, p.addr.key);
       break;
     }
     case 'team':
       if (p.room) p.room.setTeam(p, m.team);
       break;
+    // Sesli sohbet (yalnızca özel odada): ses tarayıcılar arasında doğrudan akar (WebRTC), sunucu yalnızca
+    // kimlerin açık olduğunu ve bağlantı kurma sinyallerini iletir.
+    case 'voice': {
+      const room = p.room;
+      if (!room || !room.code || !!m.on === !!p.voice) break;
+      p.voice = !!m.on;
+      if (p.voice) send(p, { t: 'voicepeers', ids: [...room.players.values()].filter((o) => o.voice && o !== p).map((o) => o.id) });
+      else room.broadcast({ t: 'voiceleave', id: p.id }, p);
+      room.broadcast(room.rosterMsg());
+      break;
+    }
+    case 'rtc': {
+      const room = p.room, to = room && room.code ? room.players.get(m.to) : null;
+      if (!p.voice || !to || !to.voice || !m.d || typeof m.d !== 'object') break;
+      send(to, { t: 'rtc', from: p.id, d: m.d });
+      break;
+    }
     case 'ping':
       p.ping = Math.max(0, Math.min(999, m.rtt | 0));
       send(p, { t: 'pong', ts: m.ts });
@@ -1137,6 +1227,19 @@ setInterval(() => {
   }
 }, 50);
 
+// Oyuncu kaydı: bağlanan istemci ya da bot (botun bağlantısı yoktur, ws yerine boş bir nesne verilir)
+function makePlayer(ws, addr, name = 'Oyuncu') {
+  return {
+    id: nextPlayerId++, ws, addr, cid: null, since: now(), gone: false, live: true,
+    name, team: 'SPEC', room: null, alive: false, bot: false, voice: false,
+    hp: 100, armor: 0, helmet: false, kit: false, money: START_MONEY,
+    primary: null, secondary: null, lastPrimary: null, att: { 1: [], 2: [] }, lastAtt: [], nades: { he: 0, flash: 0, smoke: 0 },
+    wid: { 1: 0, 2: 0 }, buys: [],
+    pos: [0, 0, 0], yaw: 0, pitch: 0, crouch: 0, weapon: 'knife',
+    kills: 0, deaths: 0, sid: 0, respawnAt: 0, protectUntil: 0, lastShot: {}, ping: 0,
+  };
+}
+
 // ---------------------------------------------------------------- WebSocket
 const wss = new WebSocketServer({ server: httpServer, maxPayload: 16 * 1024 });
 wss.on('connection', (ws, req) => {
@@ -1150,15 +1253,7 @@ wss.on('connection', (ws, req) => {
     setTimeout(() => ws.terminate(), 2000).unref();
     return;
   }
-  const p = {
-    id: nextPlayerId++, ws, addr, cid: null, since: now(), gone: false, live: true,
-    name: 'Oyuncu', team: 'SPEC', room: null, alive: false,
-    hp: 100, armor: 0, helmet: false, kit: false, money: START_MONEY,
-    primary: null, secondary: null, lastPrimary: null, att: { 1: [], 2: [] }, lastAtt: [], nades: { he: 0, flash: 0, smoke: 0 },
-    wid: { 1: 0, 2: 0 }, buys: [],
-    pos: [0, 0, 0], yaw: 0, pitch: 0, crouch: 0, weapon: 'knife',
-    kills: 0, deaths: 0, sid: 0, respawnAt: 0, protectUntil: 0, lastShot: {}, ping: 0,
-  };
+  const p = makePlayer(ws, addr);
   clients.set(p.id, p);
   send(p, { t: 'welcome', id: p.id });
   send(p, roomsMsg());
