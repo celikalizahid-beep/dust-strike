@@ -12,6 +12,7 @@ import * as sfx from './audio.js';
 import { Effects } from './effects.js';
 import { HUD } from './hud.js';
 import { PostFX } from './post.js';
+import { Voice } from './voice.js';
 import { IS_TOUCH, TouchControls, goFullscreen, Gyro } from './touch.js';
 
 let MAP = buildMap('kum');
@@ -247,6 +248,9 @@ function connect() {
   ws.onclose = () => {
     hud.menuStatus(banned ? 'Bu IP adresi yasaklı. Ban kaldırılırsa oyun kendiliğinden bağlanır.' : 'Sunucu bağlantısı koptu, yeniden deneniyor…');
     S.joined = false; S.alive = false;
+    S.roomCode = '';
+    voice.stop(false);
+    refreshRoomUi();
     for (const id of [...remotes.keys()]) removeRemote(id);
     S.roster.clear();
     hud.setVisible(false); setPause(false); hud.closeBuy(); hud.showMenu(true);
@@ -285,6 +289,9 @@ function onMessage(m) {
       // Başka bir moda geçildi: eski odanın oyuncularını ve efektlerini temizle
       hud.menuNotice('');
       S.mode = m.mode;
+      S.roomCode = m.code || '';
+      voice.stop(false);
+      refreshRoomUi();
       loadMap(m.map || 'kum');
       for (const id of [...remotes.keys()]) removeRemote(id);
       S.roster.clear();
@@ -295,6 +302,9 @@ function onMessage(m) {
       break;
     case 'joinfail':
       S.joined = false;
+      S.roomCode = '';
+      voice.stop(false);
+      refreshRoomUi();
       hud.setVisible(false);
       if (touch) touch.setVisible(false);
       menuOpen = false;
@@ -345,6 +355,9 @@ function onMessage(m) {
       break;
     }
     case 'leave': removeRemote(m.id); break;
+    case 'voicepeers': voice.onPeers(m.ids); break;
+    case 'rtc': voice.onSignal(m.from, m.d); break;
+    case 'voiceleave': voice.drop(m.id); break;
     case 'pong': S.rtt = Math.round(now - m.ts); break;
   }
 }
@@ -563,6 +576,7 @@ function onKill(m) {
   if (m.v === S.myId) {
     S.alive = false;
     view.deathAt = performance.now();
+    view.killerId = suicide ? 0 : m.k;
     view.deathPos.copy(P.pos);
     view.deathYaw = P.yaw;
     view.deathPitch = P.pitch;
@@ -1055,7 +1069,7 @@ function pickSpec(dir = 1) {
   return pool[(i + dir + pool.length) % pool.length];
 }
 function cycleSpec(dir) {
-  if (view.deathAt && performance.now() - view.deathAt < 2600) return;
+  if (view.deathAt && performance.now() - view.deathAt < KILLCAM_END) return;
   const r = pickSpec(dir);
   view.specId = r ? r.id : 0;
 }
@@ -1063,6 +1077,7 @@ function cycleSpec(dir) {
 // ---------------------------------------------------------------- Kendini önden görme (V tuşu)
 // Kamera oyuncunun önüne geçip ona bakar; kendi modelin diğer oyuncuların gördüğü gibi çizilir. Ateş ve hareket
 // değişmez (atışlar yine göz hizasından çıkar). Dürbün açılınca, ölünce ve yeniden doğunca kapanır.
+const KILLCAM_START = 650, KILLCAM_END = 3400; // ölümden sonra (ms): önce yere düşüş, sonra öldüren kamerası
 const selfie = { on: false, model: null, team: null, w: null, att: '', phase: 0 };
 function updateSelfie(dt, now) {
   const show = selfie.on && S.joined && S.alive && W.scope === 0;
@@ -1101,7 +1116,17 @@ function updateCamera(dt, now) {
     if (updateSelfie(dt, now)) vmVisible = false;
   } else if (S.joined && (S.team === 'T' || S.team === 'CT')) {
     const since = now - view.deathAt;
-    if (view.deathAt && since < 2600) {
+    const killer = view.deathAt && since >= KILLCAM_START && since < KILLCAM_END ? remotes.get(view.killerId) : null;
+    if (killer && killer.model && killer.snaps.length && (killer.alive || killer.dead)) {
+      // Öldüren kamerası: seni öldüren oyuncuya omzunun arkasından bakılır (duvarın içine girmez)
+      const head = [killer.x, killer.y + 1.45, killer.z];
+      const dir = [Math.sin(killer.yaw) * 0.94 + Math.cos(killer.yaw) * 0.22, 0.26, Math.cos(killer.yaw) * 0.94 - Math.sin(killer.yaw) * 0.22];
+      const hit = raycastWorld(MAP.boxes, head, dir, 3.4);
+      const d = Math.max(0.5, (hit ? hit.t : 3.4) - 0.3);
+      camera.position.set(head[0] + dir[0] * d, head[1] + dir[1] * d, head[2] + dir[2] * d);
+      camera.lookAt(head[0], head[1], head[2]);
+      hud.spec(`Seni öldüren: <b>${esc(killer.name)}</b>`);
+    } else if (view.deathAt && since < KILLCAM_END && (since < KILLCAM_START || !view.killerId)) {
       const f = Math.min(1, since / 500);
       camera.position.set(view.deathPos.x, view.deathPos.y + STAND_EYE - (STAND_EYE - 0.3) * f, view.deathPos.z);
       camera.rotation.set(view.deathPitch * (1 - f) - 0.25 * f, view.deathYaw, 0.5 * f);
@@ -1372,11 +1397,13 @@ window.addEventListener('keydown', (e) => {
     case 'KeyY': e.preventDefault(); chatOpen = true; chatTeam = false; hud.openChat(false); break;
     case 'KeyU': e.preventDefault(); chatOpen = true; chatTeam = true; hud.openChat(true); break;
     case 'KeyM': openTeamMenu(); break;
+    case 'KeyK': voice.talk(true); refreshRoomUi(); break;
     case 'KeyV': if (S.alive) { selfie.on = !selfie.on; hud.note(selfie.on ? 'Önden görünüm açık (V ile kapat)' : 'Önden görünüm kapalı', 1500); } break;
   }
 });
 window.addEventListener('keyup', (e) => {
   input.keys[e.code] = false;
+  if (e.code === 'KeyK') { voice.talk(false); refreshRoomUi(); }
   if (e.code === 'Tab') { e.preventDefault(); hud.scoreboard(false); }
 });
 window.addEventListener('blur', () => {
@@ -1396,16 +1423,76 @@ for (const btn of document.querySelectorAll('[data-team]')) {
     const mode = view.settings.mode, map = view.settings.map;
     view.settings.name = nameInput.value.trim().slice(0, 16);
     saveSettings();
-    if (!S.joined || mode !== S.mode || map !== MAP.id) send({ t: 'join', name: view.settings.name, mode, map, team, cid: CID });
+    if (S.joined && S.roomCode) send({ t: 'team', team }); // özel odadayken yalnızca takım değişir
+    else if (!S.joined || mode !== S.mode || map !== MAP.id) send({ t: 'join', name: view.settings.name, mode, map, team, cid: CID });
     else send({ t: 'team', team });
-    S.joined = true;
-    menuOpen = false;
-    hud.showMenu(false);
-    hud.setVisible(true);
-    document.body.classList.add('playing');
-    if (touch) { touch.setVisible(true); goFullscreen(); if (SETTINGS.gyro && !gyro.enabled) gyro.enable(); }
-    requestLock();
+    enterGame();
   });
+}
+function enterGame() {
+  S.joined = true;
+  menuOpen = false;
+  hud.showMenu(false);
+  hud.setVisible(true);
+  document.body.classList.add('playing');
+  if (touch) { touch.setVisible(true); goFullscreen(); if (SETTINGS.gyro && !gyro.enabled) gyro.enable(); }
+  requestLock();
+}
+
+// ---------------------------------------------------------------- Özel oda (kodla girilir) ve sesli sohbet
+const voice = new Voice(send, () => refreshRoomUi());
+const roomLink = () => `${location.origin}${location.pathname}?oda=${S.roomCode}`;
+function refreshRoomUi() {
+  const code = S.roomCode || '';
+  document.getElementById('menu').classList.toggle('inroom', !!code && S.joined);
+  for (const el of document.querySelectorAll('.roomCode')) el.textContent = code;
+  document.getElementById('pauseRoom').classList.toggle('hidden', !code);
+  for (const b of document.querySelectorAll('#voiceModes button')) b.classList.toggle('sel', b.dataset.voice === voice.mode);
+  const n = voice.connected;
+  document.getElementById('voiceNote').textContent = voice.error || (voice.mode === 'off' ? 'Kapalı: kimseyi duymazsın, kimse seni duymaz.'
+    : `${voice.mode === 'ptt' ? 'Konuşmak için K tuşunu basılı tut' : 'Mikrofonun açık'} · bağlı kişi: ${n}`);
+  const mic = document.getElementById('micHud');
+  mic.classList.toggle('hidden', !code || voice.mode === 'off');
+  const live = voice.mode === 'open' || (voice.mode === 'ptt' && !!input.keys.KeyK);
+  mic.classList.toggle('live', live);
+  mic.textContent = live ? '🎤 konuşuyorsun' : '🎤 K: konuş';
+}
+function startRoom(msg) {
+  sfx.init();
+  sfx.setVolume(view.settings.vol);
+  if (!ws || ws.readyState !== 1) { hud.menuStatus('Sunucuya bağlı değil, bekle…'); return; }
+  view.settings.name = nameInput.value.trim().slice(0, 16);
+  saveSettings();
+  send({ ...msg, name: view.settings.name, team: 'auto', cid: CID });
+  enterGame();
+}
+document.getElementById('roomCreate').addEventListener('click', () => {
+  startRoom({ t: 'create', mode: view.settings.mode, map: view.settings.map, bots: +document.getElementById('roomBots').value });
+});
+document.getElementById('roomJoinForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
+  if (code.length < 4) { hud.menuNotice('Oda kodunu yaz (6 harf/rakam).'); return; }
+  startRoom({ t: 'join', code });
+});
+document.getElementById('roomLeave').addEventListener('click', () => {
+  // Sunucuda odadan, bir sonraki "takım seç" ile herkese açık odaya girince çıkılır
+  S.roomCode = '';
+  S.joined = false; S.alive = false;
+  hud.setVisible(false);
+  if (touch) touch.setVisible(false);
+  voice.stop();
+  refreshRoomUi();
+  hud.menuStatus('Özel odadan çıktın — mod, harita ve takım seç');
+});
+document.getElementById('roomCopy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(roomLink()); hud.note('Oda bağlantısı kopyalandı — arkadaşına gönder', 2500); }
+  catch { hud.note(`Oda kodu: ${S.roomCode}`, 4000); }
+});
+for (const b of document.querySelectorAll('#voiceModes button')) b.addEventListener('click', () => voice.setMode(b.dataset.voice));
+{
+  const q = new URLSearchParams(location.search).get('oda');
+  if (q) document.getElementById('roomCodeInput').value = q.toUpperCase().slice(0, 6);
 }
 for (const b of document.querySelectorAll('.mode')) {
   b.addEventListener('click', () => {
@@ -1751,4 +1838,4 @@ connect();
 requestAnimationFrame(frame);
 
 // Hata ayıklama için konsoldan erişim
-window.__dust = { S, P, W, selfie, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };
+window.__dust = { S, P, W, selfie, voice, view, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };

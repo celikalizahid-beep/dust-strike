@@ -189,7 +189,7 @@ export class HUD {
       const rows = ps.sort((a, b) => b.k - a.k || a.d - b.d).map((p, i) => {
         const status = !p.alive ? 'ÖLÜ' : p.id === bombCarrier && myTeam === 'T' ? 'BOMBA' : '';
         const rank = mode === 'ffa' ? `${i + 1}. ` : '';
-        return `<tr class="${p.id === myId ? 'me' : ''} ${p.alive ? '' : 'dead'}"><td class="${cls(p)}">${rank}${esc(p.name)}</td><td>${status}</td><td>${p.k}</td><td>${p.d}</td><td>${p.ping}</td></tr>`;
+        return `<tr class="${p.id === myId ? 'me' : ''} ${p.alive ? '' : 'dead'}"><td class="${cls(p)}">${rank}${esc(p.name)}${p.voice ? ' 🎤' : ''}</td><td>${status}</td><td>${p.k}</td><td>${p.d}</td><td>${p.bot ? 'BOT' : p.ping}</td></tr>`;
       }).join('');
       return `<table><tr><th style="width:46%">Oyuncu</th><th>Durum</th><th>Leş</th><th>Ölüm</th><th>Ping</th></tr>${rows || '<tr><td colspan="5" style="color:#777">Oyuncu yok</td></tr>'}</table>`;
     };
