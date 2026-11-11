@@ -253,6 +253,7 @@ mantığı, admin API'si (gerçek sunucu başlatılarak) ve oyuncu iskeleti dene
 | Tab | Skor tablosu |
 | Y / U | Sohbet / takım sohbeti |
 | M | Takım değiştir |
+| V | Kendini önden gör (aç / kapat): karakterin diğerlerinin gördüğü gibi görünür |
 
 ## Ayarlar
 
