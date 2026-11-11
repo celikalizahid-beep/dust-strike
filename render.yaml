@@ -8,3 +8,7 @@ services:
     buildCommand: npm install
     startCommand: node server.js
     autoDeploy: true
+    envVars:
+      # Admin paneli (/admin) şifresi. Render ilk kurulumda rastgele üretir; Environment sekmesinden görülür ve değiştirilir.
+      - key: ADMIN_PASSWORD
+        generateValue: true

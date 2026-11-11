@@ -343,6 +343,8 @@ export class HUD {
   // ---------------- Menü
   showMenu(v) { $('menu').classList.toggle('hidden', !v); }
   menuStatus(t) { $('menuStatus').textContent = t; }
+  // Menüdeki uyarı kutusu (ban, atılma, engellenen giriş): boş metin kutuyu gizler
+  menuNotice(t) { $('menuNotice').textContent = t || ''; $('menuNotice').classList.toggle('hidden', !t); }
   // Menüdeki mod + harita seçimi; seçili mod o haritada yoksa ilk uygun harita seçilir ve döndürülür
   menuRooms(rooms, mode, mapId, onMapPick) {
     for (const k of ['classic', 'tdm', 'ffa']) {

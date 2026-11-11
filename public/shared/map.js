@@ -44,7 +44,7 @@ function grid(w, h) {
 // Kuzeyde CT doğuşu, güneyde T doğuşu. Doğuda Uzun A, ortada Orta ve Kedi yolu (Kısa A), batıda B tünelleri.
 function kum() {
   const G = grid(56, 56);
-  const { g, carve, put, block, slab, platform, stairs, roof, win, prop } = G;
+  const { g, carve, put, line, block, slab, platform, stairs, roof, win, prop } = G;
   const A = 1.2; // A bölgesi, Kısa A ve kedi yolu yüksekliği
   // ---- CT doğuşu ve CT orta
   carve(25, 3, 38, 10);          // CT doğuşu
@@ -76,8 +76,8 @@ function kum() {
   // ---- T doğuşu
   carve(21, 44, 41, 53);
   prop('barrel', 23, 46.5); prop('barrel', 23.6, 47.2); prop('barrel', 39.5, 52.2);
-  prop('sacks', 30, 52.6); prop('palm', 35.5, 50.5); prop('palm', 25, 51.5);
-  put('C', [[33, 46]]); put('c', [[34, 46]]);
+  prop('sacks', 38, 53.4); prop('palm', 35.5, 50.5); prop('palm', 25, 51.5);
+  put('C', [[35, 44]]); put('c', [[36, 44]]);
   // ---- Üst orta, Suicide, Orta, Xbox, orta kapılar
   carve(26, 36, 28, 43);         // Suicide
   carve(24, 32, 30, 35);         // üst orta
@@ -115,11 +115,16 @@ function kum() {
   carve(13, 42, 20, 45);
   prop('barrel', 9, 34.5); prop('sacks', 12, 40.5);
   put('c', [[9, 22], [10, 29]]);
+  // ---- Doğuş perdeleri: orta hattan (Suicide, orta, CT orta) bakınca doğuş noktaları görünmez.
+  // T tarafında Suicide ağzının karşısındaki yapı, CT tarafında CT ortanın karşısındaki avlu duvarı; uçlarından dolaşılır.
+  line('#', 24, 46, 31, 47);
+  line('#', 25, 8, 33, 8);
   return {
     w: 56, h: 56, g, blocks: G.blocks, props: G.props,
     sites: { A: [41, 4, 51, 14], B: [5, 5, 16, 16] },
-    spawnT: [23, 46, 39, 52], spawnCT: [26, 4, 37, 9],
+    spawnT: [23, 48, 34, 52], spawnCT: [26, 3, 35, 7],
     buyT: [21, 44, 41, 53], buyCT: [25, 3, 38, 10],
+    mid: [[26, 11, 28, 17], [25, 18, 29, 31], [24, 32, 30, 35], [26, 36, 28, 43]], // CT orta, orta, üst orta, Suicide
     yawT: 0, yawCT: Math.PI,
   };
 }
@@ -128,7 +133,7 @@ function kum() {
 // Doğuda T doğuşu, batıda CT doğuşu. Güneyde A (saray, A rampası, orman), kuzeyde B (daireler, kısa, market).
 function serap() {
   const G = grid(56, 48);
-  const { g, carve, put, slab, platform, stairs, roof, win, prop } = G;
+  const { g, carve, put, line, slab, platform, stairs, roof, win, prop } = G;
   // ---- T doğuşu
   carve(46, 18, 54, 30);
   prop('palm', 52.5, 28.5); prop('barrel', 47, 19); prop('barrel', 47.7, 19.4);
@@ -192,18 +197,23 @@ function serap() {
   carve(3, 22, 13, 34);
   prop('palm', 4.5, 33); prop('palm', 11.5, 23);
   put('C', [[6, 28]]); put('c', [[7, 28]]);
+  // ---- Doğuş perdeleri: T doğuşunda üst orta ağzının karşısındaki duvar (güney ucundan dolaşılır); doğuş noktaları
+  // duvarın arkasında, A rampasından da görünmeyecek kadar kuzeyde. CT doğuş noktaları odanın güney yarısında:
+  // pencere odası hizasından (ortadan gelen görüş hattı) uzakta.
+  line('#', 48, 18, 48, 27);
   return {
     w: 56, h: 48, g, blocks: G.blocks, props: G.props,
     sites: { A: [16, 35, 32, 43], B: [5, 4, 18, 13] },
-    spawnT: [47, 19, 53, 29], spawnCT: [4, 23, 12, 33],
+    spawnT: [50, 19, 54, 25], spawnCT: [4, 29, 12, 33],
     buyT: [46, 18, 54, 30], buyCT: [3, 22, 13, 34],
+    mid: [[22, 21, 39, 25], [40, 20, 45, 26]], // orta, üst orta
     yawT: Math.PI / 2, yawCT: -Math.PI / 2,
   };
 }
 
 // ---------------------------------------------------------------- de_depo: endüstriyel depo, raflı ana salon
 function depo() {
-  const { g, carve, put } = grid(40, 32);
+  const { g, carve, put, line } = grid(40, 32);
   carve(1, 12, 6, 19);   // T doğuş (batı)
   carve(33, 12, 38, 19); // CT doğuş (doğu)
   carve(12, 8, 27, 23);  // ana salon
@@ -223,18 +233,23 @@ function depo() {
   for (const r of [11, 14, 17, 20]) for (const c of [14, 15, 16, 17, 22, 23, 24, 25]) put('C', [[c, r]]);
   put('C', [[9, 2], [9, 3], [30, 3], [31, 3], [35, 6], [30, 27], [31, 27], [35, 25], [9, 28], [9, 29], [5, 18], [34, 18]]);
   put('c', [[24, 5], [32, 3], [29, 6], [32, 27], [29, 25], [24, 26], [3, 14], [36, 14], [10, 15], [29, 16], [19, 9], [20, 22]]);
+  // Doğuş odaları salona doğrudan açılmaz: geçidin ucundaki ara koridora, iki yan kapıdan çıkılır.
+  // Böylece salondan ve geçitten bakınca doğuş noktaları görünmez.
+  line('#', 6, 13, 6, 18); carve(7, 12, 7, 19);
+  line('#', 33, 13, 33, 18); carve(32, 12, 32, 19);
   return {
     w: 40, h: 32, g,
     sites: { A: [29, 1, 37, 7], B: [29, 24, 37, 30] },
-    spawnT: [2, 13, 6, 19], spawnCT: [33, 13, 37, 19],
+    spawnT: [1, 13, 5, 19], spawnCT: [34, 13, 38, 19],
     buyT: [1, 12, 6, 19], buyCT: [33, 12, 38, 19],
+    mid: [[12, 8, 27, 23], [8, 14, 11, 17], [28, 14, 31, 17]], // ana salon ve doğuş geçitleri
     yawT: -Math.PI / 2, yawCT: Math.PI / 2,
   };
 }
 
 // ---------------------------------------------------------------- de_kar: karlı kış üssü, geniş orta avlu
 function kar() {
-  const { g, carve, put } = grid(44, 36);
+  const { g, carve, put, line } = grid(44, 36);
   carve(17, 1, 26, 6);   // CT doğuş (kuzey)
   carve(17, 29, 26, 34); // T doğuş (güney)
   carve(31, 3, 42, 12);  // A bölgesi
@@ -252,11 +267,15 @@ function kar() {
   put('C', [[18, 15], [19, 15], [25, 19], [25, 20], [16, 21], [33, 6], [34, 6], [40, 10], [3, 6], [4, 6], [10, 10],
     [12, 26], [30, 27], [22, 17]]);
   put('c', [[20, 15], [22, 18], [24, 20], [35, 6], [39, 10], [5, 6], [9, 10], [13, 26], [31, 27], [5, 17], [38, 21], [19, 3], [24, 31], [21, 13]]);
+  // Doğuş sığınakları: avluya bakan cephe kapalı, köşelerdeki iki kapıdan çıkılır (avludan doğuş noktaları görünmez).
+  line('#', 18, 29, 25, 29);                    // T: kapılar caddeye açılır
+  line('#', 18, 6, 25, 6); carve(17, 7, 26, 7); // CT: kapılar geçidin başındaki ara koridora açılır
   return {
     w: 44, h: 36, g,
     sites: { A: [32, 4, 41, 11], B: [2, 4, 11, 11] },
-    spawnT: [18, 30, 26, 34], spawnCT: [18, 1, 26, 5],
+    spawnT: [18, 30, 25, 34], spawnCT: [18, 1, 25, 5],
     buyT: [17, 29, 26, 34], buyCT: [17, 1, 26, 6],
+    mid: [[15, 12, 28, 23], [20, 8, 23, 11], [18, 24, 25, 24]], // orta avlu, CT geçidi, cadde çıkışı
     yawT: 0, yawCT: Math.PI,
   };
 }
@@ -380,6 +399,7 @@ export function buildMap(id = 'kum') {
   const map = {
     id, title: info.title, desc: info.desc, theme: info.theme, modes: info.modes,
     w, h, ox, oz, grid: g, boxes, props, dmSpawns,
+    mid: def.mid || [], // orta bölge (hücre dikdörtgenleri): doğuş noktaları buradan görünmemeli
     spawns: { T: spawnList(def.spawnT), CT: spawnList(def.spawnCT) },
     yaw: { T: def.yawT, CT: def.yawCT },
     sites,

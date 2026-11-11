@@ -118,6 +118,7 @@ export function buildScenery(map, theme, opts = {}) {
   const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 14);
   const cylGeoLo = new THREE.CylinderGeometry(1, 1, 1, 8);
   const sphGeo = new THREE.SphereGeometry(1, 10, 7);
+  const domeGeo = new THREE.SphereGeometry(1, 16, 6, 0, Math.PI * 2, 0, Math.PI / 2);
   const boxGeo1 = new THREE.BoxGeometry(1, 1, 1);
   // Eşyanın yerel koordinatındaki kutuyu (merkez, ölçü) dünyaya yerleştir (eşya y ekseninde 0 ya da 90 derece döner)
   const placer = (p) => {
@@ -250,14 +251,51 @@ export function buildScenery(map, theme, opts = {}) {
     const c0 = Math.round((b.min[0] - ox) / CELL), c1 = Math.round((b.max[0] - ox) / CELL);
     const r0 = Math.round((b.min[2] - oz) / CELL), r1 = Math.round((b.max[2] - oz) / CELL);
     const H = b.max[1];
-    // Bazı çatılarda su tankı (ayaklı silindir): düz siluet bozulsun
+    // Çatılar: çevresinde alçak parapet; düz siluet bozulsun diye bazılarında su tankı, çatı odası, kubbe ya da anten.
+    // Yalnızca görseldir (çatıya çıkılamaz).
     const area = (b.max[0] - b.min[0]) * (b.max[2] - b.min[2]);
-    if (!b.border && area >= 24 && rnd(c0, r0, 7) < 0.3) {
-      const tx = (b.min[0] + b.max[0]) / 2 + (rnd(c0, r0, 8) - 0.5) * 2, tz = (b.min[2] + b.max[2]) / 2 + (rnd(c0, r0, 9) - 0.5) * 2;
-      const tint = hex(rnd(c0, r0, 10) < 0.5 ? 0xd9d6cc : 0x4a6a8c);
-      for (const [lx, lz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) B.metal.box([tx + lx - 0.04, H + 0.2, tz + lz - 0.04], [tx + lx + 0.04, H + 0.85, tz + lz + 0.04], { tint: hex(0x4a4a48) });
-      M4.compose(V.set(tx, H + 1.5, tz), Q.identity(), SC.set(0.68, 1.3, 0.68));
-      B.metal.geo(cylGeo, M4, tint);
+    const sx = b.max[0] - b.min[0], sz = b.max[2] - b.min[2];
+    if (!b.border && map.theme !== 'arena') {
+      const p0 = H + 0.22, p1 = H + 0.62, t = 0.26, tint = [0.9, 0.87, 0.8];
+      B.stone.box([b.min[0], p0, b.min[2]], [b.max[0], p1, b.min[2] + t], { scale: 1.2, tint });
+      B.stone.box([b.min[0], p0, b.max[2] - t], [b.max[0], p1, b.max[2]], { scale: 1.2, tint });
+      B.stone.box([b.min[0], p0, b.min[2] + t], [b.min[0] + t, p1, b.max[2] - t], { scale: 1.2, tint });
+      B.stone.box([b.max[0] - t, p0, b.min[2] + t], [b.max[0], p1, b.max[2] - t], { scale: 1.2, tint });
+      const pick = rnd(c0, r0, 7);
+      const tx = (b.min[0] + b.max[0]) / 2 + (rnd(c0, r0, 8) - 0.5) * Math.max(0, sx - 4.5), tz = (b.min[2] + b.max[2]) / 2 + (rnd(c0, r0, 9) - 0.5) * Math.max(0, sz - 4.5);
+      const sandy = map.theme === 'desert' || map.theme === 'mirage';
+      if (area >= 24 && pick < 0.26) {
+        // su tankı (ayaklı silindir)
+        const tankTint = hex(rnd(c0, r0, 10) < 0.5 ? 0xd9d6cc : 0x4a6a8c);
+        for (const [lx, lz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) B.metal.box([tx + lx - 0.04, H + 0.2, tz + lz - 0.04], [tx + lx + 0.04, H + 0.85, tz + lz + 0.04], { tint: hex(0x4a4a48) });
+        M4.compose(V.set(tx, H + 1.5, tz), Q.identity(), SC.set(0.68, 1.3, 0.68));
+        B.metal.geo(cylGeo, M4, tankTint);
+      } else if (area >= 28 && Math.min(sx, sz) >= 4 && pick < 0.48) {
+        // çatı odası (merdiven çıkışı): sıvalı küçük yapı, saçaklı düz çatı, kapı
+        B.plaster.box([tx - 1.3, H + 0.2, tz - 1.2], [tx + 1.3, H + 2.5, tz + 1.2], { scale: 2 });
+        B.stone.box([tx - 1.45, H + 2.5, tz - 1.35], [tx + 1.45, H + 2.66, tz + 1.35], { scale: 1.2, tint, bottom: true });
+        B.dark.box([tx - 0.4, H + 0.2, tz + 1.2], [tx + 0.4, H + 2.0, tz + 1.215]);
+      } else if (sandy && area >= 36 && Math.min(sx, sz) >= 5.5 && pick < 0.62) {
+        // kubbe: sekizgen kasnak üstünde yarım küre ve alem
+        const r = Math.min(2.4, Math.min(sx, sz) * 0.32);
+        M4.compose(V.set(tx, H + 0.55, tz), Q.identity(), SC.set(r * 1.04, 0.7, r * 1.04));
+        B.plaster.geo(cylGeoLo, M4, [1, 0.98, 0.94], 3);
+        M4.compose(V.set(tx, H + 0.9, tz), Q.identity(), SC.set(r, r * 0.92, r));
+        B.plaster.geo(domeGeo, M4, [1, 0.98, 0.94], 3);
+        M4.compose(V.set(tx, H + 0.9 + r * 0.92 + 0.3, tz), Q.identity(), SC.set(0.035, 0.6, 0.035));
+        B.metal.geo(cylGeoLo, M4, hex(0x8a7a4a));
+      } else if (pick < 0.85) {
+        // anten direği ve çanak
+        const hgt = 2.2 + rnd(c0, r0, 11) * 1.6;
+        M4.compose(V.set(tx, H + 0.2 + hgt / 2, tz), Q.identity(), SC.set(0.03, hgt, 0.03));
+        B.metal.geo(cylGeoLo, M4, hex(0x55585c));
+        for (const dy of [0.25, 0.6]) B.metal.box([tx - 0.5, H + 0.2 + hgt - dy, tz - 0.015], [tx + 0.5, H + 0.23 + hgt - dy, tz + 0.015], { tint: hex(0x55585c) });
+        if (rnd(c0, r0, 12) < 0.6) {
+          Q.setFromAxisAngle(V.set(1, 0, 0), 0.9 + rnd(c0, r0, 13)).premultiply(Q2.setFromAxisAngle(V2.set(0, 1, 0), rnd(c0, r0, 14) * 6.28));
+          M4.compose(V.set(tx + 0.35, H + 1.0, tz + 0.2), Q, SC.set(0.42, 0.06, 0.42));
+          B.metal.geo(cylGeo, M4, hex(0xc9c7c0));
+        }
+      }
     }
     // Her yüz: [dış normal (nx, nz), yüz düzlemi, boyunca hücreler]
     const faces = [];
@@ -310,7 +348,7 @@ export function buildScenery(map, theme, opts = {}) {
           M4.compose(V.set(cx, 2.62, cz), Q, SC.set(1.7, 0.04, 0.95));
           B.fabric.geo(boxGeo1, M4, hex(AWNING_COLORS[Math.floor(rnd(f.c, f.r, 6) * AWNING_COLORS.length)]));
         }
-      } else if (hv > 0.93 && H - info.y > 4 && info.roof > info.y + 3.2) {
+      } else if (hv > 0.93 && H - info.y > 4 && info.roof === Infinity) {
         // klima ya da elektrik kutusu
         put(B.metal, (hv - 0.96) * 6, info.y + 2.7, 0.22, 0.8, 0.55, 0.44, { tint: hex(0xb8b6ae) });
         put(B.dark, (hv - 0.96) * 6, info.y + 2.7, 0.445, 0.6, 0.38, 0.01);
@@ -345,7 +383,7 @@ export function buildScenery(map, theme, opts = {}) {
     mesh.receiveShadow = true;
     group.add(mesh);
   }
-  cylGeo.dispose(); cylGeoLo.dispose(); sphGeo.dispose(); boxGeo1.dispose();
+  cylGeo.dispose(); cylGeoLo.dispose(); sphGeo.dispose(); domeGeo.dispose(); boxGeo1.dispose();
   return {
     group,
     dispose() {

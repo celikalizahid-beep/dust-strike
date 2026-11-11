@@ -5,7 +5,8 @@
   "type": "module",
   "description": "CS 1.6 tarzı, tarayıcıda çalışan çok oyunculu FPS",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"

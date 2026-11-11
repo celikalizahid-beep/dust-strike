@@ -5,7 +5,9 @@ import { WEAPONS, ITEMS, ATTACHMENTS, canAttach, magSize, attFromCode } from '..
 import { movePlayer, boxHit, raycastWorld, rayAABB, STAND_H, CROUCH_H, STAND_EYE, CROUCH_EYE, JUMP_V, PLAYER_HW } from '../shared/physics.js';
 import { buildWorld } from './world.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createPlayerModel, createWeaponModel, Viewmodel, makeNameSprite, setWorldReflections } from './models.js';
+import { createWeaponModel, Viewmodel, makeNameSprite, setWorldReflections } from './models.js';
+import { createPlayerModel } from './player.js';
+import { playerHitboxes } from '../shared/hitbox.js';
 import * as sfx from './audio.js';
 import { Effects } from './effects.js';
 import { HUD } from './hud.js';
@@ -27,8 +29,8 @@ const baseFov = () => SETTINGS.fov;
 // "Otomatik"te kare hızı 55'in altına düşerse önce çözünürlük, sonra son işlem efektleri, en son gölgeler düşürülür (60 FPS hedefi).
 // Yüksek ve Ultra'da son işlem efektleri (post.js) açılır: MSAA, ışık parlaması, renk düzenleme; Ultra'da ortam gölgelendirmesi.
 const QUALITY = {
-  low: { ratio: 0.75, shadows: false, shadowSize: 1024, shadowRadius: 1, env: false, bump: false, post: false },
-  medium: { ratio: 1.0, shadows: true, shadowSize: 1024, shadowRadius: 1, env: true, bump: false, post: false },
+  low: { ratio: 0.75, shadows: false, shadowSize: 1024, shadowRadius: 1, env: false, bump: false, post: false, detail: false },
+  medium: { ratio: 1.0, shadows: true, shadowSize: 2048, shadowRadius: 1.2, env: true, bump: false, post: false },
   high: { ratio: 1.5, shadows: true, shadowSize: 4096, shadowRadius: 1.6, env: true, bump: true, post: true, bloom: true, msaa: 4 },
   ultra: { ratio: 2.0, shadows: true, shadowSize: 4096, shadowRadius: 2, env: true, bump: true, post: true, bloom: true, msaa: 4, gtao: true },
 };
@@ -44,7 +46,7 @@ const perf = { frames: 0, t0: 0, scale: 1, goodFor: 0, fps: 60 };
 function worldOpts() {
   const q = QUALITY[qualityLevel()];
   const shadowSize = Math.min(q.shadowSize, renderer.capabilities.maxTextureSize);
-  return { renderer, shadows: q.shadows, shadowSize, shadowRadius: q.shadowRadius, env: q.env, bump: q.bump, lowSpec: IS_TOUCH, hdr: q.bloom ? 3 : 1 };
+  return { renderer, shadows: q.shadows, shadowSize, shadowRadius: q.shadowRadius, env: q.env, bump: q.bump, detail: q.detail !== false, lowSpec: IS_TOUCH, hdr: q.bloom ? 3 : 1 };
 }
 function applyPixelRatio() {
   const q = QUALITY[qualityLevel()];
@@ -225,20 +227,35 @@ function saveSettings() {
 }
 
 // ---------------------------------------------------------------- Ağ
-let ws = null;
+// Tarayıcının kalıcı kimliği: sunucu, sayfayı yenileyen ya da bağlantısı kopup dönen oyuncuyu aynı IP'den gelen
+// ikinci bir oyuncudan bununla ayırır (aynı kimlikle yeniden girince eski bağlantı düşer, kimse cezalandırılmaz).
+function clientId() {
+  let id = null;
+  try { id = localStorage.getItem('dust-cid'); } catch { /* depolama kapalı */ }
+  if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+    try { localStorage.setItem('dust-cid', id); } catch { /* yok say */ }
+  }
+  return id;
+}
+const CID = clientId();
+const withReason = (m) => (m.reason ? `${m.text} Sebep: ${m.reason}.` : m.text);
+
+let ws = null, banned = false;
 function connect() {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
-  ws.onopen = () => hud.menuStatus('Sunucuya bağlandı — takımını seç');
   ws.onclose = () => {
-    hud.menuStatus('Sunucu bağlantısı koptu, yeniden deneniyor…');
+    hud.menuStatus(banned ? 'Bu IP adresi yasaklı. Ban kaldırılırsa oyun kendiliğinden bağlanır.' : 'Sunucu bağlantısı koptu, yeniden deneniyor…');
     S.joined = false; S.alive = false;
     for (const id of [...remotes.keys()]) removeRemote(id);
     S.roster.clear();
     hud.setVisible(false); setPause(false); hud.closeBuy(); hud.showMenu(true);
+    menuOpen = false;
     if (touch) touch.setVisible(false);
     document.body.classList.remove('playing');
     if (document.pointerLockElement) document.exitPointerLock();
-    setTimeout(connect, 2000);
+    // Banlıyken sunucu boşuna yoklanmaz: seyrek dene (ban kaldırılınca oyuncu sayfayı yenilemeden girebilsin)
+    setTimeout(connect, banned ? 15000 : 2000);
   };
   ws.onmessage = (e) => {
     let m;
@@ -251,10 +268,22 @@ function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
 function onMessage(m) {
   const now = performance.now();
   switch (m.t) {
-    case 'welcome': S.myId = m.id; break;
+    case 'welcome':
+      // Banlı adrese 'welcome' gelmez: bu mesaj bağlantının kabul edildiğini gösterir
+      S.myId = m.id;
+      if (banned) { banned = false; hud.menuNotice(''); }
+      hud.menuStatus('Sunucuya bağlandı — takımını seç');
+      break;
+    case 'banned':
+      banned = true;
+      hud.menuNotice(`${withReason(m)} Bir yanlışlık olduğunu düşünüyorsan sunucu yöneticisine yaz.`);
+      break;
+    case 'kicked': hud.menuNotice(withReason(m)); break;
+    case 'replaced': hud.menuNotice(`${m.text} Bu sekmede oynamak için yeniden gir.`); break;
     case 'rooms': S.rooms = m.rooms; refreshMenu(); break;
     case 'room':
       // Başka bir moda geçildi: eski odanın oyuncularını ve efektlerini temizle
+      hud.menuNotice('');
       S.mode = m.mode;
       loadMap(m.map || 'kum');
       for (const id of [...remotes.keys()]) removeRemote(id);
@@ -270,7 +299,8 @@ function onMessage(m) {
       if (touch) touch.setVisible(false);
       menuOpen = false;
       hud.showMenu(true);
-      hud.menuStatus(m.text);
+      hud.menuNotice(m.text);
+      document.body.classList.remove('playing');
       if (document.pointerLockElement) document.exitPointerLock();
       break;
     case 'state': {
@@ -327,6 +357,7 @@ function getRemote(id) {
       id, name: '', team: null, model: null, modelTeam: null, nameSprite: null, snaps: [],
       alive: false, dead: false, deathT: 0, w: null,
       x: 0, y: 0, z: 0, yaw: 0, pitch: 0, crouch: 0, speed: 0, legT: 0, stepT: 0, hitboxes: [],
+      mx: 0, mz: -1, air: 0, // hareket yönü (modelin kendi uzayında) ve havada olma oranı: yürüme animasyonu için
     };
     remotes.set(id, r);
   }
@@ -345,6 +376,7 @@ function ensureModel(r, team, force = false) {
   r.model.group.add(r.nameSprite);
   r.model.group.position.set(r.x, r.y, r.z);
   if (r.w) r.model.setWeapon(r.w, attFromCode(r.att));
+  if (r.dead) r.model.updateDeath(1, r.crouch); // model yenilenirken (ad / takım değişimi) yerdeki oyuncu ayağa kalkmasın
   scene.add(r.model.group);
 }
 
@@ -382,7 +414,7 @@ function applySnap(ps, now) {
     if (alive && !r.alive) {
       r.snaps.length = 0;
       r.dead = false;
-      r.model.group.rotation.x = 0;
+      r.model.revive();
       r.x = x; r.y = y; r.z = z;
     }
     r.alive = alive;
@@ -419,38 +451,36 @@ function updateRemotes(dt, now) {
           }
         }
       }
-      const moved = Math.hypot(x - r.x, z - r.z);
-      const inAir = Math.abs(y - r.y) > 0.01;
+      const dx = x - r.x, dz = z - r.z;
+      const moved = Math.hypot(dx, dz);
+      // Zıplama / düşme: dikey hız belirgin ama basamak çıkışı kadar ani değil
+      const vy = dt > 0 ? (y - r.y) / dt : 0;
+      const inAir = Math.abs(vy) > 1.2 && Math.abs(vy) < 12;
       r.speed = r.speed * 0.8 + (dt > 0 ? moved / dt : 0) * 0.2;
+      if (moved > 1e-4) {
+        // Hareket yönü modelin kendi uzayında (ileri −z): geri ve yana giderken adımlar o yöne atılır
+        const sin = Math.sin(yaw), cos = Math.cos(yaw), f = Math.min(1, dt * 12);
+        r.mx += ((dx * cos - dz * sin) / moved - r.mx) * f;
+        r.mz += ((dx * sin + dz * cos) / moved - r.mz) * f;
+      }
+      r.air += ((inAir ? 1 : 0) - r.air) * Math.min(1, dt * 9);
       r.x = x; r.y = y; r.z = z; r.yaw = yaw; r.pitch = pitch; r.crouch = c;
       g.position.set(x, y, z);
       g.rotation.y = yaw;
-      const m = r.model;
-      const spd = Math.min(1, r.speed / 5);
-      r.legT += dt * r.speed * 2.2;
-      const swing = Math.sin(r.legT) * 0.6 * spd;
-      m.legs[0].rotation.x = swing;
-      m.legs[1].rotation.x = -swing;
-      const hip = 0.85 - c * 0.5;
-      m.upper.position.y = hip;
-      for (const l of m.legs) { l.position.y = hip; l.scale.y = hip / 0.85; }
-      m.aim.rotation.x = pitch;
-      m.head.rotation.x = pitch * 0.5;
+      if (r.speed > 0.3) r.legT += dt * (3.5 + r.speed * 2.1);
+      r.model.update({ crouch: c, pitch, speed: r.speed, phase: r.legT, moveX: r.mx, moveZ: r.mz, air: r.air, time: now / 1000 + r.id });
+      r.nameSprite.position.y = 2.02 - c * 0.5;
       if (r.speed > 4.2 && !inAir && Math.abs(x - camera.position.x) + Math.abs(z - camera.position.z) < 40) {
         r.stepT -= dt;
         if (r.stepT <= 0) { r.stepT = 0.36; sfx.step(new THREE.Vector3(x, y, z), 1); }
       }
-      const off = c * 0.5;
-      r.hitboxes = [
-        { zone: 'head', min: [x - 0.16, y + 1.47 - off, z - 0.16], max: [x + 0.16, y + 1.78 - off, z + 0.16] },
-        { zone: 'body', min: [x - 0.27, y + 0.85 - off, z - 0.27], max: [x + 0.27, y + 1.47 - off, z + 0.27] },
-        { zone: 'legs', min: [x - 0.22, y, z - 0.22], max: [x + 0.22, y + 0.85 - off, z + 0.22] },
-      ];
+      r.hitboxes = playerHitboxes(x, y, z, c);
     } else r.hitboxes = [];
-    if (r.dead) {
-      const f = Math.min(1, (now - r.deathT) / 450);
-      g.rotation.x = f * f * Math.PI * 0.49;
-      g.position.y = r.y + f * 0.13;
+    // Ölüm animasyonu bitince duruş sabit kalır: boşuna hesaplanmaz
+    if (r.dead && !r.deathDone) {
+      const f = (now - r.deathT) / 650;
+      r.model.updateDeath(f, r.crouch);
+      r.deathDone = f >= 1;
     }
     r.nameSprite.visible = r.alive && !isEnemy(r);
   }
@@ -544,7 +574,7 @@ function onKill(m) {
     hud.spec(suicide ? 'Öldün' : `<b>${esc(kName)}</b> seni ${esc(wName)} ile öldürdü${m.hs ? ' (kafadan!)' : ''}`);
   } else {
     const r = remotes.get(m.v);
-    if (r && r.model) { r.alive = false; r.dead = true; r.deathT = performance.now(); }
+    if (r && r.model) { r.alive = false; r.dead = true; r.deathDone = false; r.deathT = performance.now(); r.model.die(); }
   }
 }
 
@@ -1332,7 +1362,7 @@ for (const btn of document.querySelectorAll('[data-team]')) {
     const mode = view.settings.mode, map = view.settings.map;
     view.settings.name = nameInput.value.trim().slice(0, 16);
     saveSettings();
-    if (!S.joined || mode !== S.mode || map !== MAP.id) send({ t: 'join', name: view.settings.name, mode, map, team });
+    if (!S.joined || mode !== S.mode || map !== MAP.id) send({ t: 'join', name: view.settings.name, mode, map, team, cid: CID });
     else send({ t: 'team', team });
     S.joined = true;
     menuOpen = false;

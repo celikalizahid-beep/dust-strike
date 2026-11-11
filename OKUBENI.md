@@ -19,7 +19,7 @@ Bilgisayarın kapalıyken bile herkesin girebileceği kalıcı bir link verir (`
 
 1. github.com'da ücretsiz hesap aç, yeni bir depo (repository) oluştur.
 2. Bu klasördeki dosyaları depoya yükle (`node_modules` klasörü HARİÇ):
-   `public/`, `server.js`, `package.json`, `package-lock.json`, `render.yaml`, `BASLAT.bat`, `OKUBENI.md`
+   `public/`, `server/`, `server.js`, `package.json`, `package-lock.json`, `render.yaml`, `BASLAT.bat`, `OKUBENI.md`
 3. render.com'da GitHub ile giriş yap → **New → Blueprint** → deponu seç → **Apply**.
    `render.yaml` sayesinde ayarlar (Frankfurt sunucusu, ücretsiz plan, başlatma komutu) otomatik gelir.
 4. Birkaç dakika sonra Render sana linki verir; arkadaşlarına o linki gönder.
@@ -36,6 +36,68 @@ Notlar: Ücretsiz planda 15 dakika kimse oynamazsa sunucu uyur; ilk giren kişi 
 3. Çıktıdaki `https://....trycloudflare.com` adresini arkadaşlarına gönder.
 
 (Alternatif: modeminden 3000 portunu bilgisayarına yönlendirip dış IP'ni paylaşmak.)
+
+## Admin paneli
+
+Adres: `<oyunun adresi>/admin` (örnek: `http://localhost:3000/admin`). Telefondan da kullanılır.
+
+**Şifre**
+- Kendi bilgisayarında: sunucu açılırken pencerede `Şifre:` satırında yazar. İlk açılışta üretilir, sonraki
+  açılışlarda aynı kalır (`data/admin.json` içinde saklanır). Kendin belirlemek için `ADMIN_PASSWORD` ortam
+  değişkenini ayarla.
+- Render'da: panelde servisini aç → **Environment** → `ADMIN_PASSWORD`. Bu depo Blueprint ile kurulduysa Render
+  değeri kendisi üretir; oradan görebilir ya da kendi şifrenle değiştirebilirsin. Değişken hiç yoksa elle ekle
+  (yoksa şifre sunucu her yeniden başladığında değişir ve yalnızca Render'ın **Logs** sekmesinde görünür).
+- 5 yanlış denemeden sonra o adresin girişi 10 dakika kilitlenir.
+
+**Neler yapılır**
+- **Oyuncular:** oyundaki herkes adı, odası, takımı, IP adresi ve ping'iyle listelenir. **At** oyuncuyu oyundan
+  çıkarır (yeniden girebilir), **Banla** IP adresini yasaklar.
+- **Yasaklı IP'ler:** liste, **Banı kaldır**, elle IP ekleme. Banlanan oyuncu menüde sebebiyle birlikte uyarı
+  görür; ban kaldırılınca sayfayı yenilemesine gerek kalmadan en geç 15 saniyede yeniden bağlanır.
+- **Aynı IP kuralı**, **izinli IP'ler**, **duyuru** (herkesin sohbetine düşen mesaj) ve **olay kaydı**
+  (girişler, banlar, engellenen bağlantılar). Oyundan çıkmış biri de olay kaydındaki satırından banlanabilir.
+- Banlı bir IP admin sayfasına yine de girebilir: kendi evini yanlışlıkla banlarsan panelden kaldırabilirsin.
+
+### Aynı IP kuralı
+
+Aynı internet bağlantısından ikinci bir kişi oyuna girmeye çalışınca ne olacağını belirler:
+
+| Seçenek | Ne olur |
+| --- | --- |
+| **Engelle ve IP'yi banla** (varsayılan) | İkinci kişi giremez, IP yasaklanır, o IP'den oynayan kişi de oyundan düşer. Ban panelden kaldırılana kadar sürer. |
+| **Sadece engelle** | İkinci kişi giremez; içerideki oynamaya devam eder, kimse banlanmaz. |
+| **Kapalı** | Aynı IP'den istenen kadar kişi girebilir. |
+
+Bilmen gerekenler:
+- Aynı evdeki, okuldaki ya da internet kafedeki herkes dışarıdan **tek bir IP** ile görünür; bazı mobil operatörler
+  de birçok kişiye aynı IP'yi verir. Yani bu kural açıkken aynı evden iki kişi aynı anda oynayamaz. Böyle biri
+  banlanırsa panelde **Kaldır + izin ver** ile banı kaldırıp IP'yi izinli listeye alabilirsin.
+- Sayfayı yenileyen ya da bağlantısı kopup geri gelen oyuncu ikinci kişi sayılmaz (tarayıcı kendini tanıtır; aynı
+  tarayıcı yeniden girince eski bağlantısı düşer). Menüde bekleyen ama oyuna girmemiş bağlantılar da sayılmaz.
+- Sunucunun çalıştığı bilgisayardan (`localhost`) yapılan bağlantılar kuralın dışındadır.
+- IPv6 kullananlarda aynı ev /64 ağıyla tanınır (cihazın adresi değişse de ban sürer).
+
+### Kalıcı ayarlar (Render ücretsiz plan için önemli)
+
+Banlar ve panel ayarları `data/admin.json` dosyasına yazılır. Kendi bilgisayarında bu kalıcıdır. **Render'ın ücretsiz
+planında disk kalıcı değildir:** sunucu uyuyup uyandığında ya da yeniden kurulduğunda panelden eklenen banlar ve
+ayarlar sıfırlanır. Kalıcı olmasını istediklerini Render → **Environment** bölümüne yaz:
+
+| Değişken | Anlamı |
+| --- | --- |
+| `ADMIN_PASSWORD` | Admin şifresi |
+| `IP_RULE` | Aynı IP kuralının başlangıç değeri: `ban`, `block` (sadece engelle) ya da `off` |
+| `BANNED_IPS` | Kalıcı yasaklı IP'ler, virgülle ayrılmış (ör. `85.105.12.34, 78.180.1.2`). Panelden kaldırılamaz. |
+| `ALLOWED_IPS` | Aynı IP kuralından muaf IP'ler, virgülle ayrılmış |
+| `DATA_DIR` | Veri klasörü (varsayılan `data/`). Kalıcı diski olan bir sunucuda o diskin yolunu ver. |
+| `TRUST_PROXY` | Gerçek IP'nin nasıl bulunacağı (aşağıya bak) |
+
+**Gerçek IP adresi:** Sunucu Render'da ya da `cloudflared` tünelinin arkasında çalışırken oyuncuların gerçek IP'si
+kendiliğinden doğru bulunur. Başka bir barındırma hizmeti ya da kendi vekil sunucun (nginx vb.) varsa `TRUST_PROXY=1`
+(X-Forwarded-For) ya da vekilin yazdığı başlığın adını (ör. `TRUST_PROXY=x-real-ip`) ayarla. IP güvenilir biçimde
+bulunamıyorsa panel uyarı gösterir ve o bağlantılara kural ile ban **uygulanmaz** (yanlış ayar yüzünden herkesin aynı
+IP sayılıp banlanmasını önlemek için).
 
 ## Oyun modları
 
@@ -63,6 +125,12 @@ Menüde mod seçtikten sonra harita seçilir (her mod + harita ayrı bir odadır
 | **de_depo** | Endüstriyel depo, raflı ana salon, konteynerler | Hepsi |
 | **de_kar** | Karlı kış üssü, geniş orta avlu, kar yağışı | Hepsi |
 | **dm_arena** | Küçük simetrik arena, neon ışıklar | Takımlı ÖM, Herkes Tek |
+
+**Doğuş noktaları ortadan görünmez.** Klasik modda raund başında kimse doğduğu yerde ortadan (ya da karşı doğuştan)
+vurulamaz: de_kum'da T doğuşunda Suicide ağzının karşısında bir yapı, CT doğuşunda CT ortanın karşısında avlu duvarı;
+de_serap'ta T doğuşunda üst ortaya bakan duvar; de_depo ve de_kar'da doğuş odaları iki yan kapıyla açılır. Her
+haritanın `mid` (orta bölge) tanımı vardır ve `npm test` bu kuralı her haritada doğrular; yeni harita eklerken ya da
+haritayı değiştirirken test kırmızıya dönerse doğuş noktaları ortadan görünüyor demektir.
 
 de_kum ve de_serap, CS2'deki haritaların düzeninden (bölgeler, geçitler, yükseklikler) esinlenerek kodla yeniden
 kuruldu; Valve'ın harita dosyaları ya da dokuları kullanılmadı. Merdivenler, yükseltilmiş alanlar (A bölgesi, kedi
@@ -104,11 +172,19 @@ Ayarlar → Görüntü → **Grafik kalitesi**:
 | --- | --- |
 | **Otomatik** (önerilen) | Bilgisayarda Yüksek, telefonda Orta ile başlar. Kare hızı 55'in altına düşerse önce çözünürlük, sonra son işlem efektleri, en son gölgeler azaltılır (60 FPS hedefi). |
 | **Düşük** | Gölge yok, düşük çözünürlük |
-| **Orta** | Gölgeler, ortam yansıması, duvar ve sandık diplerinde yumuşak gölgelenme |
+| **Orta** | Gölgeler (2048), ortam yansıması, duvar ve sandık diplerinde yumuşak gölgelenme, duvarlarda ton farkı, toz zerreleri |
 | **Yüksek** | Keskin, yumuşak kenarlı gölgeler; ışık parlaması (namlu alevi, patlamalar, neon şeritler); haritaya göre renk düzenleme; kenar yumuşatma |
 | **Ultra** | Yüksek + ekran uzayı ortam gölgelendirmesi (köşeler ve nesne dipleri kararır) ve daha yüksek çözünürlük. Güçlü ekran kartı gerekir. |
 
 Son işlem efektleri `public/js/post.js` içinde (three.js eklentileri sunucuda `/three/addons/` adresinden verilir).
+
+Çevre (`public/js/world.js`, `public/js/props.js`): temaya göre ufuk (kum tepeleri, karlı dağlar, şehir silueti),
+çatılarda parapet, çatı odası, kubbe ve anten, tavanlı yerlerde lambalar (zemine düşen ışık gerçek ışık kaynağı
+değildir; telefonda da ucuzdur), havada toz zerreleri.
+
+Oyuncu modeli (`public/js/player.js`): eklemli, yuvarlak hatlı asker; oyuncu başına tek çizim çağrısı. Yürüme, eğilme
+(diz çökme), silahı tutuş ve ölüm duruşları `public/js/rig.js` içinde hesaplanır; isabet kutuları
+`public/shared/hitbox.js` içindedir ve görünen modelle örtüştükleri testle doğrulanır.
 
 Silah modelleri (`public/js/models.js`): metal, ahşap ve plastik parçalar ayrı malzemeyle çizilir (metal ortamı
 yansıtır, ahşapta damar, yüzeylerde ince doku). Elindeki silahta kenarlar yuvarlatılmıştır ve arpacık, ray,
@@ -153,6 +229,11 @@ Aynı link telefonda açılınca oyun dokunmatik kontrollere geçer. Telefonu ya
 - Uygulamalar GitHub Actions ile derlenir (`.github/workflows/apps.yml`): `apps/` klasörü değişince ya da
   Actions sekmesinden "Run workflow" ile. İkisi de canlı sunucuyu açtığı için oyun güncellemeleri uygulamalara
   kendiliğinden gelir; yeniden derlemeye gerek yoktur.
+
+## Testler
+
+`npm test` (Node 20+). Harita kuralları (doğuş noktaları ortadan görünmez, her yer yürünerek ulaşılabilir), IP ve ban
+mantığı, admin API'si (gerçek sunucu başlatılarak) ve oyuncu iskeleti denenir.
 
 ## Yük testi
 

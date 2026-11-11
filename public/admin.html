@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>DUST STRIKE · Yönetim</title>
+<style>
+  :root {
+    --hud: #ffb228;
+    --hud-dim: rgba(255, 178, 40, 0.55);
+    --t: #e0a050;
+    --ct: #7fb2ff;
+    --bg: #0c0b09;
+    --panel: #17140f;
+    --panel2: #1f1b14;
+    --line: rgba(255, 190, 90, 0.22);
+    --text: #ece6da;
+    --dim: #a99f8c;
+    --ok: #7ddc7d;
+    --bad: #ff6a5a;
+    --warn: #ffd27a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 Verdana, Tahoma, "Segoe UI", sans-serif; }
+  body { background: radial-gradient(1200px 500px at 50% -120px, rgba(255, 178, 40, 0.10), transparent 70%), var(--bg); }
+  .hidden { display: none !important; }
+  h1 { margin: 0; font: 30px/1 Impact, "Arial Black", sans-serif; letter-spacing: 2px; color: #fff; }
+  h1 span { color: var(--hud); margin-left: 6px; }
+  h1 small { font: 12px Verdana, sans-serif; color: var(--dim); letter-spacing: 1px; margin-left: 10px; }
+  h2 { margin: 0 0 12px; font-size: 15px; color: var(--hud); letter-spacing: .5px; display: flex; align-items: baseline; gap: 8px; }
+  h2 small { color: var(--dim); font-weight: normal; font-size: 12px; }
+  button, input, select { font: inherit; }
+  button { cursor: pointer; border-radius: 4px; padding: 7px 12px; color: var(--hud); background: rgba(255, 178, 40, 0.10); border: 1px solid var(--hud-dim); }
+  button:hover:not(:disabled) { background: rgba(255, 178, 40, 0.22); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--hud); color: #1a1408; border: 0; font-weight: bold; }
+  button.primary:hover:not(:disabled) { background: #ffc452; }
+  button.danger { color: var(--bad); border-color: rgba(255, 106, 90, 0.55); background: rgba(255, 90, 60, 0.08); }
+  button.danger:hover:not(:disabled) { background: rgba(255, 90, 60, 0.2); }
+  button.ok { color: var(--ok); border-color: rgba(125, 220, 125, 0.5); background: rgba(90, 200, 90, 0.08); }
+  button.ok:hover:not(:disabled) { background: rgba(90, 200, 90, 0.2); }
+  button.small { padding: 4px 9px; font-size: 12px; }
+  input[type=text], input[type=password] { width: 100%; padding: 9px 11px; background: #0d0c0a; border: 1px solid var(--line); color: #fff; border-radius: 4px; outline: none; }
+  input:focus { border-color: var(--hud-dim); }
+
+  /* ---------- Giriş ---------- */
+  #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #login form { width: 380px; max-width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 26px 28px; box-shadow: 0 10px 40px rgba(0, 0, 0, .6); }
+  #login p { color: var(--dim); font-size: 12px; margin: 8px 0 18px; }
+  #login label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+  #login button { width: 100%; margin-top: 14px; padding: 10px; }
+  #loginError { min-height: 18px; margin-top: 10px; font-size: 12px; color: var(--bad); }
+
+  /* ---------- Panel ---------- */
+  #app { max-width: 1180px; margin: 0 auto; padding: 18px 16px 60px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; min-width: 92px; }
+  .chip b { display: block; font-size: 19px; color: #fff; font-weight: normal; }
+  .chip span { font-size: 10px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase; }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; margin-top: 14px; }
+  .note { font-size: 12px; color: var(--dim); margin: 8px 0 0; }
+  .warnbox { margin-top: 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: var(--warn); background: rgba(255, 210, 122, 0.08); border: 1px solid rgba(255, 210, 122, 0.4); }
+  #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: 92vw; padding: 10px 16px; border-radius: 6px; font-size: 13px; background: #23301f; color: var(--ok); border: 1px solid rgba(125, 220, 125, 0.5); box-shadow: 0 6px 24px rgba(0, 0, 0, .6); z-index: 10; }
+  #toast.err { background: #33201c; color: var(--bad); border-color: rgba(255, 106, 90, 0.6); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: normal; font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line); padding: 6px 8px; white-space: nowrap; }
+  td { padding: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  td.act { text-align: right; white-space: nowrap; }
+  td.act button { margin-left: 6px; }
+  .empty { color: var(--dim); font-size: 13px; padding: 6px 0; }
+  .mono { font-family: Consolas, "Courier New", monospace; font-size: 13px; }
+  .t { color: var(--t); } .ct { color: var(--ct); }
+  .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 3px; font-size: 10px; letter-spacing: .5px; vertical-align: middle; background: rgba(255, 255, 255, 0.08); color: var(--dim); }
+  .tag.auto { background: rgba(255, 178, 40, 0.16); color: var(--hud); }
+  .tag.warn { background: rgba(255, 210, 122, 0.14); color: var(--warn); }
+  .tag.okk { background: rgba(125, 220, 125, 0.14); color: var(--ok); }
+  .dead { opacity: .55; }
+
+  .rules { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .rule { display: block; padding: 12px 14px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; background: rgba(0, 0, 0, 0.25); cursor: pointer; }
+  .rule input { accent-color: var(--hud); margin: 0 8px 0 0; }
+  .rule b { color: #fff; font-size: 13px; }
+  .rule span { display: block; margin-top: 6px; font-size: 12px; color: var(--dim); }
+  .rule.sel { border-color: var(--hud); background: rgba(255, 178, 40, 0.10); box-shadow: inset 0 0 0 1px var(--hud); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .row input[type=text] { flex: 1 1 180px; width: auto; }
+  .row .grow2 { flex: 2 1 240px; }
+  .list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: 16px; background: var(--panel2); border: 1px solid var(--line); }
+  .pill button { padding: 1px 7px; border-radius: 12px; font-size: 12px; }
+  h3 { margin: 18px 0 0; font-size: 13px; color: #fff; font-weight: normal; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .filters button { padding: 4px 10px; font-size: 12px; color: var(--dim); border-color: rgba(255, 255, 255, 0.16); background: none; }
+  .filters button.sel { color: var(--hud); border-color: var(--hud); background: rgba(255, 178, 40, 0.10); }
+  #log { max-height: 420px; overflow: auto; }
+  .ev { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px; }
+  .ev time { flex: 0 0 auto; color: var(--dim); font-size: 11px; font-family: Consolas, monospace; }
+  .ev .tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .ev.ban .tx, .ev.block .tx, .ev.loginfail .tx { color: var(--bad); }
+  .ev.unban .tx, .ev.allow .tx { color: var(--ok); }
+  .ev.kick .tx { color: var(--warn); }
+  .ev.leave .tx { color: var(--dim); }
+
+  @media (max-width: 760px) {
+    .rules { grid-template-columns: 1fr; }
+    /* Dar ekranda tablo satırları karta dönüşür */
+    table, tbody, tr, td { display: block; width: 100%; }
+    thead { display: none; }
+    tr { padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.10); }
+    tr:last-child { border-bottom: 0; }
+    td { border: 0; padding: 2px 0; display: flex; gap: 10px; }
+    td::before { content: attr(data-l); flex: 0 0 76px; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding-top: 2px; }
+    td.act { text-align: left; padding-top: 8px; }
+    td.act::before { content: ""; flex: 0; }
+    td.act button { margin: 0 6px 0 0; }
+    .ev { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div id="login" class="hidden">
+  <form id="loginForm" autocomplete="off">
+    <h1>DUST<span>STRIKE</span></h1>
+    <p>Yönetim paneli · şifre sunucu açılırken konsolda yazar ya da ADMIN_PASSWORD ile belirlenir.</p>
+    <label for="password">Admin şifresi</label>
+    <input type="password" id="password" autocomplete="current-password" autofocus>
+    <button type="submit" class="primary" id="loginBtn">Giriş yap</button>
+    <div id="loginError"></div>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>DUST<span>STRIKE</span><small>YÖNETİM</small></h1>
+    <div class="chips">
+      <div class="chip"><b id="stPlayers">0</b><span>Oyunda</span></div>
+      <div class="chip"><b id="stLobby">0</b><span>Menüde</span></div>
+      <div class="chip"><b id="stBans">0</b><span>Yasaklı IP</span></div>
+      <div class="chip"><b id="stUptime">–</b><span>Çalışma süresi</span></div>
+      <div class="chip"><b id="stTick">–</b><span>Tick (ms)</span></div>
+    </div>
+    <button id="logoutBtn">Çıkış</button>
+  </header>
+
+  <div id="warnings"></div>
+
+  <section class="box">
+    <h2>Oyuncular <small id="playersCount"></small></h2>
+    <div id="players"></div>
+  </section>
+
+  <section class="box">
+    <h2>Aynı IP kuralı <small>aynı internet bağlantısından ikinci bir kişi oyuna girmeye çalışınca</small></h2>
+    <div class="rules" id="rules">
+      <label class="rule"><input type="radio" name="ipRule" value="ban"><b>Engelle ve IP'yi banla</b>
+        <span>İkinci kişi giremez. IP yasaklanır ve o IP'den oynayan kişi de oyundan düşer. Ban, aşağıdan kaldırılana kadar sürer.</span></label>
+      <label class="rule"><input type="radio" name="ipRule" value="block"><b>Sadece engelle</b>
+        <span>İkinci kişi giremez, içerideki oynamaya devam eder. Kimse banlanmaz.</span></label>
+      <label class="rule"><input type="radio" name="ipRule" value="off"><b>Kapalı</b>
+        <span>Aynı IP'den istenen kadar kişi girebilir (aynı evden ya da okuldan oynayan arkadaşlar).</span></label>
+    </div>
+    <p class="note">Aynı evdeki, okuldaki ya da internet kafedeki herkes dışarıdan tek bir IP ile görünür; bazı mobil operatörler de birçok kişiye aynı IP'yi verir. Böyle biri yanlışlıkla banlanırsa banı kaldırıp IP'yi aşağıdaki izinli listeye ekleyebilirsin. Sayfayı yenileyen ya da bağlantısı kopup geri gelen oyuncu ikinci kişi sayılmaz.</p>
+    <h3>İzinli IP'ler <small class="note">· bu adreslere kural uygulanmaz</small></h3>
+    <div class="list" id="allow"></div>
+    <form class="row" id="allowForm">
+      <input type="text" id="allowIp" placeholder="IP adresi (ör. 85.105.12.34)" autocomplete="off" spellcheck="false">
+      <button type="submit" class="ok">İzin ver</button>
+    </form>
+  </section>
+
+  <section class="box">
+    <h2>Yasaklı IP'ler <small id="bansCount"></small></h2>
+    <div id="bans"></div>
+    <form class="row" id="banForm">
+      <input type="text" id="banIp" placeholder="IP adresi" autocomplete="off" spellcheck="false">
+      <input type="text" id="banReason" class="grow2" placeholder="Sebep (isteğe bağlı)" maxlength="200" autocomplete="off">
+      <button type="submit" class="danger">IP'yi banla</button>
+    </form>
+    <p class="note hidden" id="renderNote">Render'ın ücretsiz planında disk kalıcı değildir: sunucu uyuyup uyandığında buradan eklenen banlar ve ayarlar sıfırlanır. Kalıcı olması için Render → Environment bölümünde BANNED_IPS, ALLOWED_IPS ve IP_RULE değişkenlerini kullan (OKUBENI.md).</p>
+  </section>
+
+  <section class="box">
+    <h2>Duyuru <small>oyundaki herkesin sohbetine sistem mesajı olarak düşer</small></h2>
+    <form class="row" id="sayForm" style="margin-top:0">
+      <input type="text" id="sayText" class="grow2" placeholder="Mesaj" maxlength="200" autocomplete="off">
+      <button type="submit">Gönder</button>
+    </form>
+  </section>
+
+  <section class="box">
+    <h2>Olay kaydı <small>son 300 olay · sunucu yeniden başlayınca silinir</small></h2>
+    <div class="filters" id="logFilters">
+      <button data-f="all" class="sel">Hepsi</button>
+      <button data-f="mod">Ban ve engeller</button>
+      <button data-f="join">Giriş / çıkış</button>
+      <button data-f="admin">Yönetici</button>
+    </div>
+    <div id="log"></div>
+  </section>
+</div>
+
+<div id="toast" class="hidden"></div>
+<script src="/js/admin.js"></script>
+</body>
+</html>

@@ -64,16 +64,16 @@ const TEX = {
   }),
   // Büyük kesme kumtaşı bloklar: renk farkı, yontulmuş köşeler, ince tortu çizgileri (dikişsiz tekrarlar)
   sandstone: (base) => canvasTex(512, (g, s) => {
-    g.fillStyle = rgb(base, 0.6); g.fillRect(0, 0, s, s);
-    const rows = 7, rh = s / rows;
+    g.fillStyle = rgb(base, 0.74); g.fillRect(0, 0, s, s);
+    const rows = 9, rh = s / rows;
     for (let r = 0; r < rows; r++) {
       let x = -Math.random() * 80;
       while (x < s) {
-        const bw = 70 + Math.random() * 110, l = 0.84 + Math.random() * 0.24, c = 4 + Math.random() * 6;
+        const bw = 60 + Math.random() * 80, l = 0.9 + Math.random() * 0.16, c = 3 + Math.random() * 4;
         const draw = (sx) => {
-          const x0 = x + sx + 3, y0 = r * rh + 3, w = bw - 6, hh = rh - 6;
+          const x0 = x + sx + 2, y0 = r * rh + 2, w = bw - 4, hh = rh - 4;
           const gr = g.createLinearGradient(0, y0, 0, y0 + hh);
-          gr.addColorStop(0, rgb(base, l * 1.06)); gr.addColorStop(1, rgb(base, l * 0.9));
+          gr.addColorStop(0, rgb(base, l * 1.04)); gr.addColorStop(1, rgb(base, l * 0.93));
           g.fillStyle = gr;
           g.beginPath();
           g.moveTo(x0 + c, y0); g.lineTo(x0 + w - c * 0.5, y0); g.lineTo(x0 + w, y0 + c); g.lineTo(x0 + w, y0 + hh - c * 0.6);
@@ -88,15 +88,15 @@ const TEX = {
         x += bw;
       }
     }
-    stains(g, s, 18, 'rgba(70,45,20,0.14)');
+    stains(g, s, 14, 'rgba(70,45,20,0.09)');
     for (let i = 0; i < 10; i++) blot(g, s, Math.random() * s, Math.random() * s, 30 + Math.random() * 60, 'rgba(255,245,220,0.1)');
-    pixelNoise(g, s, 22);
+    pixelNoise(g, s, 18);
   }),
   plaster: (base, worn = 0) => canvasTex(512, (g, s) => {
     g.fillStyle = rgb(base); g.fillRect(0, 0, s, s);
-    for (let i = 0; i < 22; i++) blot(g, s, Math.random() * s, Math.random() * s, 30 + Math.random() * 90, Math.random() < 0.5 ? 'rgba(90,65,35,0.14)' : 'rgba(255,245,220,0.16)');
-    g.strokeStyle = 'rgba(70,50,30,0.35)'; g.lineWidth = 1.2;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 18; i++) blot(g, s, Math.random() * s, Math.random() * s, 30 + Math.random() * 90, Math.random() < 0.5 ? 'rgba(90,65,35,0.07)' : 'rgba(255,245,220,0.12)');
+    g.strokeStyle = 'rgba(70,50,30,0.22)'; g.lineWidth = 1.1;
+    for (let i = 0; i < 4; i++) {
       let x = Math.random() * s, y = Math.random() * s;
       g.beginPath(); g.moveTo(x, y);
       for (let k = 0; k < 12; k++) { x += (Math.random() - 0.5) * 30; y += Math.random() * 18; g.lineTo(x, y); }
@@ -207,7 +207,15 @@ const TEX = {
       for (let i = 0; i < 26; i++) { g.fillStyle = 'rgba(150,170,200,0.18)'; g.beginPath(); g.ellipse(Math.random() * s, Math.random() * s, 6, 10, Math.random() * 3, 0, 7); g.fill(); }
     }
     pixelNoise(g, s, kind === 'snow' ? 10 : 24);
-    if (kind === 'sand') for (let i = 0; i < 400; i++) { const v = Math.random() < 0.6 ? 90 : 220; g.fillStyle = `rgba(${v},${v - 20},${v - 50},0.5)`; const r = 1 + Math.random() * 2; g.fillRect(Math.random() * s, Math.random() * s, r, r); }
+    if (kind === 'sand') {
+      for (let i = 0; i < 400; i++) { const v = Math.random() < 0.6 ? 90 : 220; g.fillStyle = `rgba(${v},${v - 20},${v - 50},0.5)`; const r = 1 + Math.random() * 2; g.fillRect(Math.random() * s, Math.random() * s, r, r); }
+      // Çakıl taşları: koyu gövde, üstte ışık alan kenar
+      for (let i = 0; i < 26; i++) {
+        const x = Math.random() * s, y = Math.random() * s, rx = 2.5 + Math.random() * 4, ry = rx * (0.6 + Math.random() * 0.3), a = Math.random() * 3;
+        g.fillStyle = 'rgba(60,48,34,0.55)'; g.beginPath(); g.ellipse(x + 1, y + 1.5, rx, ry, a, 0, 7); g.fill();
+        g.fillStyle = rgb(base, 0.78 + Math.random() * 0.3); g.beginPath(); g.ellipse(x, y, rx, ry, a, 0, 7); g.fill();
+      }
+    }
   }),
   tiles: (base, grout) => canvasTex(512, (g, s) => {
     g.fillStyle = grout; g.fillRect(0, 0, s, s);
@@ -219,7 +227,7 @@ const TEX = {
   woodCrate: (base) => canvasTex(256, (g, s) => {
     g.fillStyle = rgb(base); g.fillRect(0, 0, s, s);
     for (let i = 0; i < 6; i++) { g.fillStyle = rgb(base, 0.85 + Math.random() * 0.3); g.fillRect(0, i * s / 6 + 1, s, s / 6 - 2); }
-    g.strokeStyle = rgb(base, 0.6); g.lineWidth = 26; g.strokeRect(13, 13, s - 26, s - 26);
+    g.strokeStyle = rgb(base, 0.72); g.lineWidth = 26; g.strokeRect(13, 13, s - 26, s - 26);
     g.lineWidth = 22; g.beginPath(); g.moveTo(20, 20); g.lineTo(s - 20, s - 20); g.stroke();
     g.strokeStyle = 'rgba(255,220,160,0.18)'; g.lineWidth = 2; g.strokeRect(26, 26, s - 52, s - 52);
     g.fillStyle = '#2b2116';
@@ -261,9 +269,9 @@ const THEMES = {
     sun: [0xfff0d6, 2.7, [38, 70, 22]], hemi: [0xd6e6ff, 0x9a8a70, 1.15], envGround: 0x9c9384,
     grade: { tint: [1.05, 1.0, 0.92], sat: 1.1 }, container: 0x2d5f8a,
     make: () => ({
-      wallA: TEX.sandstone(0xcfae78), wallB: TEX.plaster(0xd8c194, 2), trim: TEX.trim(0xb09062),
-      ground: TEX.ground(0xc3a272, 'sand'), site: TEX.tiles(0xbaa27c, '#7d6a4c'), crate: TEX.woodCrate(0x8f6236),
-      stone: TEX.sandstone(0xbf9d6c), door: TEX.planks(0x6d4b2c),
+      wallA: TEX.sandstone(0xd6bd90), wallB: TEX.plaster(0xe3d3ae), trim: TEX.trim(0xa98f68),
+      ground: TEX.ground(0xcbb48b, 'sand'), site: TEX.tiles(0xc4b08c, '#8c7a5c'), crate: TEX.woodCrate(0xb79160),
+      stone: TEX.sandstone(0xc8ad80), door: TEX.planks(0x6d4b2c),
     }),
   },
   mirage: {
@@ -271,9 +279,9 @@ const THEMES = {
     sun: [0xfff1d8, 2.8, [-34, 72, 30]], hemi: [0xd8e6ff, 0xa38c6c, 1.15], envGround: 0xa89880,
     grade: { tint: [1.04, 1.0, 0.95], sat: 1.08 }, container: 0x8a3b2a, groundScale: 3,
     make: () => ({
-      wallA: TEX.plaster(0xe3c99f, 2), wallB: TEX.sandstone(0xd3b07a), trim: TEX.trim(0xc0a47a),
-      ground: TEX.ground(0xbfae8c, 'cobble'), site: TEX.tiles(0xc8b48e, '#8a7656'), crate: TEX.woodCrate(0x8f6236),
-      stone: TEX.sandstone(0xc6a777), door: TEX.planks(0x5f6f7f),
+      wallA: TEX.plaster(0xe8d6b2), wallB: TEX.sandstone(0xd9bf92), trim: TEX.trim(0xb59a70),
+      ground: TEX.ground(0xc4b596, 'cobble'), site: TEX.tiles(0xcbb994, '#8f7c5e'), crate: TEX.woodCrate(0xb79160),
+      stone: TEX.sandstone(0xcbb084), door: TEX.planks(0x5f6f7f),
     }),
   },
   industrial: {
@@ -449,7 +457,7 @@ function makeFloorAO(map, theme) {
   for (const b of map.boxes) {
     const x0 = Math.max(0, Math.round((b.min[0] - map.ox) * AO_PPM)), x1 = Math.min(W, Math.round((b.max[0] - map.ox) * AO_PPM));
     const z0 = Math.max(0, Math.round((b.min[2] - map.oz) * AO_PPM)), z1 = Math.min(H, Math.round((b.max[2] - map.oz) * AO_PPM));
-    const v = b.type === 'wall' ? 1 : b.type === 'block' ? (b.mat === 'roof' ? 0.3 : b.mat === 'door' ? 0.6 : 0.9) : b.type === 'prop' ? 0.6 : b.big ? 0.85 : 0.7;
+    const v = b.type === 'wall' ? 1 : b.type === 'block' ? (b.mat === 'roof' ? 0.5 : b.mat === 'door' ? 0.6 : 0.9) : b.type === 'prop' ? 0.6 : b.big ? 0.85 : 0.7;
     for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) occ[z * W + x] = Math.max(occ[z * W + x], v);
   }
   let ao = boxBlur(occ, W, H, 3);
@@ -493,6 +501,128 @@ function makeFloorAO(map, theme) {
   return { mesh, tex };
 }
 
+// Ufuk: haritanın çevresinde, sınır duvarlarının arkasında görünen uzak arazi (kum tepeleri, dağlar, şehir silueti).
+// İki halka: yakın ve uzak. Sis uzaklaştıkça rengi soldurur; çarpışması yoktur, tek mesh'tir.
+const BACKDROP = {
+  desert: { near: [0xc9ae7e, 16, 30, 'dune'], far: [0xb89a70, 34, 62, 'mesa'], ground: 0xc9b189 },
+  mirage: { near: [0xcdb58a, 14, 26, 'town'], far: [0xb8a07a, 30, 56, 'dune'], ground: 0xc4b596 },
+  industrial: { near: [0x4f565e, 14, 34, 'town'], far: [0x6a737c, 26, 48, 'dune'], ground: 0x77797b },
+  snow: { near: [0x7f8c9a, 18, 36, 'peak'], far: [0xa9b6c4, 44, 86, 'peak'], ground: 0xe6ecf2 },
+  arena: { near: [0x2a2438, 14, 40, 'town'], far: [0x3a2f48, 30, 60, 'town'], ground: 0x3c3f46 },
+};
+function makeBackdrop(map, themeName, theme) {
+  const def = BACKDROP[themeName];
+  if (!def) return null;
+  const R0 = Math.hypot(map.w * CELL, map.h * CELL) / 2 + 26;
+  const pos = [], col = [], idx = [];
+  const fog = new THREE.Color(theme.fog);
+  let seed = map.w * 131 + map.h * 17;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const layer = ([hex, hMin, hMax, shape], radius, haze) => {
+    const base = new THREE.Color(hex).lerp(fog, haze);
+    const N = 144, heights = new Array(N + 1);
+    const ph = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
+    let runLeft = 0, runH = 0;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      let k;
+      if (shape === 'dune') k = 0.5 + 0.28 * Math.sin(a * 3 + ph[0]) + 0.16 * Math.sin(a * 7 + ph[1]) + 0.06 * Math.sin(a * 17 + ph[2]);
+      else if (shape === 'mesa') { const m = 0.5 + 0.5 * Math.sin(a * 4 + ph[0]) * Math.sin(a * 1.5 + ph[1]); k = m > 0.55 ? 0.85 + 0.1 * Math.sin(a * 9 + ph[2]) : 0.25 + 0.35 * m; }
+      else if (shape === 'peak') k = Math.abs(Math.sin(a * 5.5 + ph[0])) * 0.55 + Math.abs(Math.sin(a * 13 + ph[1])) * 0.3 + rnd() * 0.15;
+      else { if (runLeft-- <= 0) { runLeft = 1 + Math.floor(rnd() * 4); runH = rnd() < 0.12 ? 1 : 0.15 + rnd() * 0.6; } k = runH; }
+      heights[i] = hMin + (hMax - hMin) * Math.max(0, Math.min(1, k));
+    }
+    heights[N] = heights[0];
+    // Tepeler biraz daha aydınlık; kar haritasında dorukları karlı
+    const top = themeName === 'snow' ? base.clone().lerp(new THREE.Color(0xffffff), 0.75) : base.clone().multiplyScalar(1.18);
+    const i0 = pos.length / 3;
+    // Şehir siluetinde her dilimin üstü düzdür (binalar); diğerlerinde tepeler yumuşak birleşir
+    const flat = shape === 'town';
+    for (let i = 0; i <= N; i++) {
+      const a = (i / N) * Math.PI * 2, x = Math.cos(a) * radius, z = Math.sin(a) * radius;
+      const hs = flat ? [heights[Math.max(0, i - 1)], heights[Math.min(N - 1, i)]] : [heights[i], heights[i]];
+      for (const hh of hs) {
+        pos.push(x, -6, z, x, hh, z);
+        col.push(base.r * 0.9, base.g * 0.9, base.b * 0.9, top.r, top.g, top.b);
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      const a = i0 + i * 4 + 2, b = i0 + (i + 1) * 4; // dilimin sol ve sağ kenarı (alt, üst)
+      idx.push(a, a + 1, b + 1, a, b + 1, b);
+    }
+  };
+  layer(def.far, R0 + 95, 0.45);
+  layer(def.near, R0, 0.2);
+  // Dış zemin: harita ile ufuk arası (yukarıdan bakınca boşluk görünmesin)
+  const gc = new THREE.Color(def.ground).lerp(fog, 0.12), gi = pos.length / 3, gr = R0 + 110;
+  for (const [x, z] of [[-gr, -gr], [gr, -gr], [gr, gr], [-gr, gr]]) { pos.push(x, -0.25, z); col.push(gc.r, gc.g, gc.b); }
+  idx.push(gi, gi + 2, gi + 1, gi, gi + 3, gi + 2);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  mesh.frustumCulled = false;
+  mesh.userData.noAO = true;
+  return mesh;
+}
+
+// Havada süzülen toz zerreleri (kar yağmayan haritalarda): kameranın çevresinde dolanır
+function makeDust(count, color) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) { pos[i * 3] = (Math.random() - 0.5) * 36; pos[i * 3 + 1] = 0.2 + Math.random() * 4.5; pos[i * 3 + 2] = (Math.random() - 0.5) * 36; }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const g = c.getContext('2d'); const gr = g.createRadialGradient(8, 8, 0, 8, 8, 8);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 16, 16);
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.04, map: new THREE.CanvasTexture(c), color, transparent: true, depthWrite: false, opacity: 0.3, blending: THREE.AdditiveBlending }));
+  pts.frustumCulled = false;
+  return pts;
+}
+
+// Tavanlı yerlerde (tünel, iç mekân) lambalar: armatür, parlayan ampul ve zemine düşen sıcak ışık havuzu.
+// Gerçek ışık kaynağı değildir (onlarcası telefonda pahalı olur); ışık havuzu toplamalı karışımla çizilir.
+function makeLamps(map, hdr) {
+  const roofs = map.boxes.filter((b) => b.type === 'block' && b.mat === 'roof');
+  if (!roofs.length) return null;
+  const floorAt = (x, z) => {
+    let y = 0;
+    for (const b of map.boxes) if (b.type === 'block' && (b.mat === 'floor' || b.mat === 'step') && x > b.min[0] && x < b.max[0] && z > b.min[2] && z < b.max[2]) y = Math.max(y, b.max[1]);
+    return y;
+  };
+  const fix = new GeoBuilder(), bulb = new GeoBuilder(), pool = new GeoBuilder();
+  const flatUV = [[0, 0], [1, 0], [1, 1], [0, 1]], one = [1, 1, 1, 1];
+  for (const b of roofs) {
+    const lx = b.max[0] - b.min[0], lz = b.max[2] - b.min[2], alongX = lx >= lz;
+    const len = alongX ? lx : lz, n = Math.max(1, Math.round(len / 7));
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const x = alongX ? b.min[0] + lx * t : (b.min[0] + b.max[0]) / 2, z = alongX ? (b.min[2] + b.max[2]) / 2 : b.min[2] + lz * t;
+      const top = b.min[1], fy = floorAt(x, z) + 0.035;
+      fix.box([x - 0.02, top - 0.34, z - 0.02], [x + 0.02, top, z + 0.02], { scale: 1, bottom: 1, gradH: 1 });          // askı
+      fix.box([x - 0.16, top - 0.42, z - 0.16], [x + 0.16, top - 0.34, z + 0.16], { scale: 1, bottom: 1, gradH: 1 });    // şapka
+      bulb.box([x - 0.06, top - 0.52, z - 0.06], [x + 0.06, top - 0.42, z + 0.06], { scale: 1, bottom: 1, gradH: 1, under: true });
+      const r = Math.min(4.2, (top - fy) * 1.35);
+      pool.quad([x - r, fy, z + r], [x + r, fy, z + r], [x + r, fy, z - r], [x - r, fy, z - r], [0, 1, 0], flatUV, one);
+      pool.quad([x - 1.3, top - 0.01, z - 1.3], [x + 1.3, top - 0.01, z - 1.3], [x + 1.3, top - 0.01, z + 1.3], [x - 1.3, top - 0.01, z + 1.3], [0, -1, 0], flatUV, one); // tavandaki parıltı
+    }
+  }
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const group = new THREE.Group();
+  const add = (builder, material, flags = {}) => { const m = new THREE.Mesh(builder.build(), material); Object.assign(m.userData, flags); group.add(m); return m; };
+  add(fix, new THREE.MeshStandardMaterial({ color: 0x25221e, roughness: 0.6, metalness: 0.5 })).castShadow = false;
+  add(bulb, new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.84, 0.56).multiplyScalar(hdr) }));
+  const glow = add(pool, new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0xffb468).multiplyScalar(1.5), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), { noAO: true });
+  glow.renderOrder = 2;
+  return group;
+}
+
 function makeSnow(count) {
   const geo = new THREE.BufferGeometry();
   const pos = new Float32Array(count * 3);
@@ -507,6 +637,27 @@ function makeSnow(count) {
   return pts;
 }
 
+// Büyük ölçekli ton farkı: doku her 4 metrede tekrarladığı için geniş duvarlar düz ve desenli görünür. Dünya
+// konumuna bağlı yumuşak bir gürültüyle (~10 m) renk hafifçe açılıp koyulaşır; tekrar göze batmaz.
+function addMacroVariation(material) {
+  material.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vMacro;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMacro = position;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vMacro;
+        float macroHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float macroNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(macroHash(i), macroHash(i + vec2(1.0, 0.0)), f.x), mix(macroHash(i + vec2(0.0, 1.0)), macroHash(i + vec2(1.0, 1.0)), f.x), f.y); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        vec2 mq = vMacro.xz * 0.085 + vec2(vMacro.y * 0.21, -vMacro.y * 0.16);
+        diffuseColor.rgb *= 0.84 + 0.3 * (macroNoise(mq) * 0.65 + macroNoise(mq * 2.7 + 13.1) * 0.35);`);
+  };
+  material.customProgramCacheKey = () => 'dust-macro';
+  return material;
+}
+
 // ---------------------------------------------------------------- Dünya
 export function buildWorld(scene, map, opts = {}) {
   if (opts.renderer) maxAniso = Math.min(16, opts.renderer.capabilities.getMaxAnisotropy());
@@ -514,11 +665,15 @@ export function buildWorld(scene, map, opts = {}) {
   const T = theme.make();
   const group = new THREE.Group();
   const bump = opts.bump !== false;
-  const std = (tex, extra = {}) => new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 0.92, ...(bump ? { bumpMap: tex, bumpScale: extra.bumpScale ?? 1.2 } : {}), ...extra.mat });
+  const macro = opts.detail !== false;
+  const std = (tex, extra = {}) => {
+    const m = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 0.92, ...(bump ? { bumpMap: tex, bumpScale: extra.bumpScale ?? 1.2 } : {}), ...extra.mat });
+    return macro && extra.macro !== false ? addMacroVariation(m) : m;
+  };
   const mats = {
     wallA: std(T.wallA, { bumpScale: 0.7 }), wallB: std(T.wallB, { bumpScale: 0.35 }),
     trim: std(T.trim, { bumpScale: 0.5, mat: theme.glowTrim ? { emissive: new THREE.Color(theme.glowTrim), emissiveIntensity: 0.0 } : {} }),
-    crate: std(T.crate, { bumpScale: 1 }), crate2: T.crate2 ? std(T.crate2, { bumpScale: 1 }) : null,
+    crate: std(T.crate, { bumpScale: 1, macro: false }), crate2: T.crate2 ? std(T.crate2, { bumpScale: 1, macro: false }) : null,
     site: std(T.site, { bumpScale: 0.6 }),
     stone: std(T.stone, { bumpScale: 0.6 }), roof: std(T.stone, { bumpScale: 0.5 }), door: std(T.door, { bumpScale: 0.5 }),
   };
@@ -527,15 +682,20 @@ export function buildWorld(scene, map, opts = {}) {
   capTex.repeat.set(1, 1);
   capTex.needsUpdate = true;
   mats.cap = std(capTex, { bumpScale: 0.3 });
-  const beamTex = TEX.planks(0x5c4128);
+  const beamTex = TEX.planks(0x9a7a52);
   mats.beam = std(beamTex, { bumpScale: 0.6 });
   const gb = { wallA: new GeoBuilder(), wallB: new GeoBuilder(), trim: new GeoBuilder(), crate: new GeoBuilder(), crate2: new GeoBuilder(), site: new GeoBuilder(), glow: new GeoBuilder(), stone: new GeoBuilder(), cap: new GeoBuilder(), roof: new GeoBuilder(), door: new GeoBuilder(), beam: new GeoBuilder() };
 
   let n = 0;
+  const roofScale = theme.groundScale || 8;
   for (const b of map.boxes) {
     if (b.type === 'wall') {
-      gb[b.v ? 'wallB' : 'wallA'].box(b.min, b.max, { scale: 4, bottom: 0.55, gradH: 6.5 });
-      gb.trim.box([b.min[0] - 0.12, b.max[1] - 0.02, b.min[2] - 0.12], [b.max[0] + 0.12, b.max[1] + (map.theme === 'snow' ? 0.35 : 0.25), b.max[2] + 0.12], { scale: 2, bottom: 0.92, gradH: 100 });
+      gb[b.v ? 'wallB' : 'wallA'].box(b.min, b.max, { scale: 4, bottom: 0.68, gradH: 6.5 });
+      const capTop = b.max[1] + (map.theme === 'snow' ? 0.35 : 0.25);
+      gb.trim.box([b.min[0] - 0.12, b.max[1] - 0.02, b.min[2] - 0.12], [b.max[0] + 0.12, capTop, b.max[2] + 0.12], { scale: 2, bottom: 0.92, gradH: 100 });
+      // Damın üstü: zemin dokusu (tozlu düz dam; kar haritasında karla kaplı)
+      gb.cap.quad([b.min[0] - 0.12, capTop + 0.004, b.max[2] + 0.12], [b.max[0] + 0.12, capTop + 0.004, b.max[2] + 0.12], [b.max[0] + 0.12, capTop + 0.004, b.min[2] - 0.12], [b.min[0] - 0.12, capTop + 0.004, b.min[2] - 0.12],
+        [0, 1, 0], [[b.min[0] / roofScale, -b.max[2] / roofScale], [b.max[0] / roofScale, -b.max[2] / roofScale], [b.max[0] / roofScale, -b.min[2] / roofScale], [b.min[0] / roofScale, -b.min[2] / roofScale]], [0.9, 0.9, 0.9, 0.9]);
       if (theme.glowTrim && !b.border) gb.glow.box([b.min[0] - 0.02, 1.2, b.min[2] - 0.02], [b.max[0] + 0.02, 1.32, b.max[2] + 0.02], { scale: 1, bottom: 1, gradH: 1 });
     } else if (b.type === 'crate') {
       (T.crate2 && n++ % 2 ? gb.crate2 : gb.crate).box(b.min, b.max, { faceUV: true });
@@ -556,7 +716,7 @@ export function buildWorld(scene, map, opts = {}) {
       } else if (b.mat === 'door') {
         gb.door.box(b.min, b.max, { scale: 2, bottom: 0.8, gradH: 3 });
       } else {
-        gb.wallA.box(b.min, b.max, { scale: 4, bottom: 0.55, gradH: 6.5, under: b.min[1] > 0.5 });
+        gb.wallA.box(b.min, b.max, { scale: 4, bottom: 0.68, gradH: 6.5, under: b.min[1] > 0.5 });
         gb.trim.box([b.min[0] - 0.06, b.max[1] - 0.02, b.min[2] - 0.06], [b.max[0] + 0.06, b.max[1] + 0.12, b.max[2] + 0.06], { scale: 2, bottom: 0.92, gradH: 100 });
       }
     }
@@ -598,6 +758,10 @@ export function buildWorld(scene, map, opts = {}) {
   const sky = makeSky(theme, 400);
   sky.renderOrder = -1;
   group.add(sky);
+  const backdrop = makeBackdrop(map, map.theme, theme);
+  if (backdrop) group.add(backdrop);
+  const lamps = makeLamps(map, opts.hdr || 1);
+  if (lamps) group.add(lamps);
 
   // Işıklar
   const env = opts.renderer && opts.env !== false ? makeEnvironment(opts.renderer, theme) : null;
@@ -622,6 +786,8 @@ export function buildWorld(scene, map, opts = {}) {
 
   const snow = theme.snowfall ? makeSnow(opts.lowSpec ? 400 : 900) : null;
   if (snow) group.add(snow);
+  const dust = !theme.snowfall && macro ? makeDust(opts.lowSpec ? 140 : 320, theme.dust || 0xfff0d0) : null;
+  if (dust) group.add(dust);
 
   scene.add(group);
   let time = 0;
@@ -641,6 +807,18 @@ export function buildWorld(scene, map, opts = {}) {
           if (y < 0) y += 20;
           p.setY(i, y);
           p.setX(i, p.getX(i) + Math.sin(time + i) * dt * 0.3);
+        }
+        p.needsUpdate = true;
+      }
+      if (dust) {
+        // Zerreler dünyada yavaşça süzülür; kameradan uzaklaşan, öbür yandan geri gelir (kutu kamerayı izler)
+        const p = dust.geometry.attributes.position, a = p.array, cx = camera.position.x, cz = camera.position.z;
+        for (let i = 0; i < a.length; i += 3) {
+          a[i] += Math.sin(time * 0.4 + i) * dt * 0.12 + dt * 0.1;
+          a[i + 1] += Math.sin(time * 0.3 + i * 1.7) * dt * 0.05;
+          a[i + 2] += Math.cos(time * 0.35 + i) * dt * 0.12;
+          if (a[i] - cx > 18) a[i] -= 36; else if (a[i] - cx < -18) a[i] += 36;
+          if (a[i + 2] - cz > 18) a[i + 2] -= 36; else if (a[i + 2] - cz < -18) a[i + 2] += 36;
         }
         p.needsUpdate = true;
       }

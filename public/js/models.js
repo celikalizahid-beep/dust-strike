@@ -1,4 +1,4 @@
-// Parçalardan kurulan modeller: silahlar, oyuncular ve birinci şahıs silah görünümü (viewmodel).
+// Parçalardan kurulan modeller: silahlar ve birinci şahıs silah görünümü (viewmodel). Oyuncu modeli player.js içinde.
 // Parçalar tek mesh'e birleştirilir (az çizim çağrısı). Her parçanın malzemesi (metal, ahşap, plastik) köşe verisi
 // olarak saklanır; ortak gölgelendirici metal parlaklığını, ahşap damarını ve ince yüzey dokusunu çizer.
 // Birinci şahıs silahta kenarlar yuvarlatılır ve küçük ayrıntılar eklenir; diğer oyuncuların silahları sade kalır.
@@ -6,9 +6,9 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 // Yüzey türleri: metal (çizik, parlaklık farkı), ahşap (damar), mat (plastik, kumaş, deri)
-const METAL = 0, WOOD = 1, MATTE = 2;
+export const METAL = 0, WOOD = 1, MATTE = 2;
 const matCache = new Map();
-function mat(color, rough = 0.7, metal = 0.1, kind = MATTE) {
+export function mat(color, rough = 0.7, metal = 0.1, kind = MATTE) {
   const key = `${color}|${rough}|${metal}|${kind}`;
   let m = matCache.get(key);
   if (!m) {
@@ -31,14 +31,6 @@ function box(w, h, d, m, x = 0, y = 0, z = 0, rx = 0) {
   mesh.rotation.x = rx;
   return mesh;
 }
-function limb(from, to, w, m) {
-  const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
-  const mesh = new THREE.Mesh(boxGeo(w, w, a.distanceTo(b)), m);
-  mesh.position.copy(a).add(b).multiplyScalar(0.5);
-  mesh.lookAt(b);
-  return mesh;
-}
-
 // Parça yapıcıları. fp (birinci şahıs) iken kutuların kenarları yuvarlatılır, silindirler daha pürüzsüz olur.
 function kit(fp) {
   const place = (mesh, x, y, z, rx, ry, rz) => { mesh.position.set(x, y, z); mesh.rotation.set(rx, ry, rz); return mesh; };
@@ -163,16 +155,17 @@ function makePbrMaterial() {
   m.customProgramCacheKey = () => 'dust-pbr';
   return m;
 }
-const WORLD_MAT = makePbrMaterial(); // dünyadaki modeller (oyuncular, yerdeki silahlar)
+export const WORLD_MAT = makePbrMaterial(); // dünyadaki modeller (oyuncular, yerdeki silahlar)
 const VM_MAT = makePbrMaterial();    // birinci şahıs silah ve eller (her zaman ortam yansıması olur)
 export function setWorldReflections(on) { WORLD_MAT.userData.metalScale.value = on ? 1 : 0.4; }
 
-// Bir grubun doğrudan çocuk mesh'lerini tek mesh'e birleştirir; renk, pürüzlülük, metallik ve yüzey türü köşe
-// verisine yazılır. Ayrıntı dokusu için yüzey yönüne göre düzlemsel UV üretilir (ahşap damarı uzun eksen boyunca).
-function mergeChildren(group, material = WORLD_MAT) {
-  const meshes = group.children.filter((c) => c.isMesh && !c.userData.keep && c.material.isMeshStandardMaterial);
-  if (!meshes.length) return;
-  const pos = [], nor = [], col = [], uv = [], pbr = [], idx = [];
+// Mesh'leri (kendi konum / dönüş / ölçekleriyle) tek geometride birleştirir; renk, pürüzlülük, metallik ve yüzey türü
+// köşe verisine yazılır. Ayrıntı dokusu için yüzey yönüne göre düzlemsel UV üretilir (ahşap damarı uzun eksen boyunca).
+// userData.skin verilmiş mesh'ler için iskelet ağırlıkları da yazılır: sayı = tek kemik; { a, b, y0, y1 } = y1'in
+// üstünde a kemiği, y0'ın altında b kemiği, arası yumuşak geçiş (diz, dirsek, bel gibi bükülen yerler).
+export function mergeGeometry(meshes) {
+  const pos = [], nor = [], col = [], uv = [], pbr = [], idx = [], skinIdx = [], skinW = [];
+  const skinned = meshes.some((m) => m.userData.skin !== undefined);
   let base = 0;
   for (const m of meshes) {
     m.updateMatrix();
@@ -180,6 +173,7 @@ function mergeChildren(group, material = WORLD_MAT) {
     const p = geo.attributes.position, n = geo.attributes.normal;
     const c = m.material.color, kind = m.material.userData.kind ?? MATTE;
     const rough = m.material.roughness, metal = m.material.metalness;
+    const skin = m.userData.skin ?? 0;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
       const nx = n.getX(i), ny = n.getY(i), nz = n.getZ(i);
@@ -191,12 +185,19 @@ function mergeChildren(group, material = WORLD_MAT) {
       if (ax >= ay && ax >= az) uv.push(z * DETAIL_SCALE, y * DETAIL_SCALE);
       else if (ay >= az) uv.push(z * DETAIL_SCALE, x * DETAIL_SCALE);
       else uv.push(x * DETAIL_SCALE, y * DETAIL_SCALE);
+      if (skinned) {
+        if (typeof skin === 'number') { skinIdx.push(skin, 0, 0, 0); skinW.push(1, 0, 0, 0); }
+        else {
+          const t = Math.max(0, Math.min(1, (y - skin.y0) / (skin.y1 - skin.y0)));
+          const wa = t * t * (3 - 2 * t);
+          skinIdx.push(skin.a, skin.b, 0, 0); skinW.push(wa, 1 - wa, 0, 0);
+        }
+      }
     }
     if (geo.index) for (let i = 0; i < geo.index.count; i++) idx.push(geo.index.getX(i) + base);
     else for (let i = 0; i < p.count; i++) idx.push(i + base);
     base += p.count;
     geo.dispose();
-    group.remove(m);
   }
   const merged = new THREE.BufferGeometry();
   merged.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -204,9 +205,21 @@ function mergeChildren(group, material = WORLD_MAT) {
   merged.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   merged.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   merged.setAttribute('pbr', new THREE.Float32BufferAttribute(pbr, 3));
+  if (skinned) {
+    merged.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIdx, 4));
+    merged.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinW, 4));
+  }
   merged.setIndex(idx);
   merged.computeBoundingSphere();
-  const mesh = new THREE.Mesh(merged, material);
+  return merged;
+}
+
+// Bir grubun doğrudan çocuk mesh'lerini tek mesh'e birleştirir (az çizim çağrısı)
+function mergeChildren(group, material = WORLD_MAT) {
+  const meshes = group.children.filter((c) => c.isMesh && !c.userData.keep && c.material.isMeshStandardMaterial);
+  if (!meshes.length) return;
+  for (const m of meshes) group.remove(m);
+  const mesh = new THREE.Mesh(mergeGeometry(meshes), material);
   mesh.userData.merged = true;
   group.add(mesh);
 }
@@ -515,35 +528,84 @@ function applyAttachments(K, g, name, kind, atts, muzzle, left) {
 }
 
 // ---------------------------------------------------------------- Birinci şahıs kollar
+// Eller parmaklarıyla kurulur: kabzayı saran sağ el, el kundağını alttan kavrayan sol el. Renkler üçüncü şahıs
+// modeliyle (player.js) aynıdır. Parçalar elin kendi uzayında tanımlanır, sonra silaha göre yerleştirilir.
+function placeParts(g, parts, pos, rot) {
+  const m = new THREE.Matrix4().compose(new THREE.Vector3(...pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot)), new THREE.Vector3(1, 1, 1));
+  for (const part of parts) { part.updateMatrix(); part.applyMatrix4(m); g.add(part); }
+}
+// Dik bir kabzayı kavrayan el. Elin uzayı: kabza ekseni y, namlu −z; side +1 sağ el (avuç sağda), −1 sol el.
+function gripHand(K, glove, side) {
+  // Elin sırtı ve avuç içi yuvarlak (basık küre): kutu gibi durmasın
+  const blob = (sx, sy, sz, x, y, z) => { const m = K.sph(1, glove, x, y, z); m.scale.set(sx, sy, sz); return m; };
+  const parts = [
+    blob(0.019, 0.046, 0.04, side * 0.031, 0, 0.012),           // elin sırtı
+    blob(0.028, 0.044, 0.016, side * 0.008, 0, 0.046),          // avuç içi (kabzanın arkası)
+    K.capsule([side * 0.03, 0.036, -0.012], [side * 0.014, 0.04, -0.062], 0.0095, glove), // işaret parmağı (tetikte)
+    K.capsule([side * -0.004, 0.03, 0.045], [side * -0.025, 0.036, 0.002], 0.0105, glove), // başparmak
+  ];
+  for (const y of [0.012, -0.012, -0.035]) {
+    parts.push(K.capsule([side * 0.03, y, -0.012], [side * 0.004, y, -0.035], 0.0095, glove),
+      K.capsule([side * 0.004, y, -0.035], [side * -0.021, y, -0.016], 0.0092, glove));
+  }
+  for (const y of [0.036, 0.012, -0.012, -0.035]) parts.push(K.sph(0.0108, glove, side * 0.036, y, -0.012)); // parmak boğumları
+  return parts;
+}
+// El kundağını alttan kavrayan el. Elin uzayı: kundak ekseni z, avuç yukarı; parmaklar sağ yandan yukarı kıvrılır.
+function cupHand(K, glove) {
+  const palm = K.sph(1, glove, 0, -0.016, 0);
+  palm.scale.set(0.04, 0.014, 0.048);
+  const parts = [
+    palm,
+    K.capsule([-0.036, -0.01, 0.022], [-0.041, 0.026, -0.006], 0.0105, glove), // başparmak (sol yanda)
+  ];
+  for (const z of [-0.032, -0.011, 0.01, 0.031]) {
+    parts.push(K.capsule([0.034, -0.014, z], [0.041, 0.02, z], 0.0095, glove), K.capsule([0.041, 0.02, z], [0.031, 0.036, z], 0.009, glove));
+  }
+  return parts;
+}
+
 function createArms(kind, team, left) {
   const K = kit(true);
   const g = new THREE.Group();
-  const sleeve = mat(team === 'T' ? 0x5e4a30 : 0x2f3c52, 0.92, 0, MATTE);
-  const cuff = mat(team === 'T' ? 0x4a3a25 : 0x243043, 0.95, 0, MATTE);
-  const glove = mat(team === 'T' ? 0x2b2620 : 0x1a1a1a, 0.72, 0, MATTE);
+  const sleeve = mat(team === 'T' ? 0x7a6542 : 0x2f3d55, 0.92, 0, MATTE);
+  const cuff = mat(team === 'T' ? 0x5a4a30 : 0x222c40, 0.95, 0, MATTE);
+  const glove = mat(team === 'T' ? 0x24201b : 0x17191c, 0.72, 0, MATTE);
   const arm = (hand, elbow) => {
     g.add(K.capsule(hand, elbow, 0.04, sleeve));
     const d = new THREE.Vector3(...elbow).sub(new THREE.Vector3(...hand)).normalize().multiplyScalar(0.05);
     g.add(K.capsule(hand, [hand[0] + d.x, hand[1] + d.y, hand[2] + d.z], 0.043, cuff)); // kol ağzı
   };
   if (kind === 'bomb') {
-    g.add(K.bx(0.08, 0.06, 0.1, glove, -0.14, 0, 0), K.bx(0.08, 0.06, 0.1, glove, 0.14, 0, 0));
-    arm([-0.14, -0.01, 0.06], [-0.24, -0.2, 0.35]);
-    arm([0.14, -0.01, 0.06], [0.24, -0.2, 0.35]);
+    // C4 iki yandan tutulur: avuçlar yanlarda, parmaklar üstte
+    for (const s of [-1, 1]) {
+      g.add(K.bx(0.03, 0.07, 0.1, glove, s * 0.135, 0, 0));
+      for (const z of [-0.03, -0.01, 0.01, 0.03]) g.add(K.capsule([s * 0.128, 0.03, z], [s * 0.09, 0.043, z], 0.0095, glove));
+      g.add(K.capsule([s * 0.13, -0.02, 0.04], [s * 0.1, -0.03, 0.02], 0.0105, glove));
+      arm([s * 0.14, -0.01, 0.06], [s * 0.24, -0.2, 0.35]);
+    }
     mergeChildren(g, VM_MAT);
     return g;
   }
-  // Sağ el: kabzayı kavrayan avuç ve öne dolanan parmaklar
-  g.add(K.bx(0.058, 0.07, 0.08, glove, 0.006, -0.04, 0.04, -0.3),
-    K.bx(0.046, 0.05, 0.03, glove, -0.006, -0.032, -0.004, -0.3));
-  arm([0.008, -0.07, 0.085], [0.09, -0.24, 0.44]);
+  if (kind === 'knife') {
+    // Bıçak sapı namlu ekseninde (z): el sapı yandan kavrar
+    placeParts(g, gripHand(K, glove, 1), [0.004, -0.002, 0.03], [Math.PI / 2 - 0.12, 0, 0.5]);
+    arm([0.02, -0.04, 0.09], [0.11, -0.22, 0.44]);
+  } else if (kind === 'nade') {
+    placeParts(g, gripHand(K, glove, 1), [0.004, 0.03, -0.026], [-0.1, 0, 0]);
+    arm([0.012, -0.03, 0.03], [0.1, -0.22, 0.4]);
+  } else {
+    // Tüfek ve tabanca: sağ el kabzada (kabza hafif öne eğik)
+    placeParts(g, gripHand(K, glove, 1), [0.002, -0.04, 0.03], [-0.3, 0, 0]);
+    arm([0.008, -0.07, 0.085], [0.09, -0.24, 0.44]);
+  }
   if (kind === 'rifle' && left) {
-    g.add(K.bx(0.07, 0.055, 0.1, glove, left.x - 0.01, left.y - 0.03, left.z),
-      K.bx(0.02, 0.04, 0.08, glove, left.x + 0.03, left.y - 0.005, left.z)); // başparmak yanı
-    arm([left.x - 0.02, left.y - 0.05, left.z + 0.045], [-0.2, -0.24, 0.12]);
+    placeParts(g, cupHand(K, glove), [left.x, left.y - 0.012, left.z], [0, 0, 0]);
+    arm([left.x - 0.02, left.y - 0.045, left.z + 0.05], [-0.2, -0.24, 0.12]);
   } else if (kind === 'pistol') {
-    g.add(K.bx(0.056, 0.056, 0.085, glove, -0.036, -0.05, 0.04, -0.3));
-    arm([-0.04, -0.07, 0.08], [-0.17, -0.25, 0.4]);
+    // Destek eli: sağ elin parmaklarını soldan sarar, biraz aşağıda
+    placeParts(g, gripHand(K, glove, -1), [0.0, -0.052, 0.024], [-0.3, 0, 0]);
+    arm([-0.04, -0.075, 0.08], [-0.17, -0.25, 0.4]);
   }
   mergeChildren(g, VM_MAT);
   return g;
@@ -683,7 +745,7 @@ export class Viewmodel {
   }
 }
 
-// ---------------------------------------------------------------- Oyuncu modeli
+// ---------------------------------------------------------------- Oyuncu adı (modelin kendisi player.js içinde)
 export function makeNameSprite(text, color) {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 64;
@@ -701,72 +763,4 @@ export function makeNameSprite(text, color) {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
   s.scale.set(1.3, 0.33, 1);
   return s;
-}
-
-export function createPlayerModel(team) {
-  const isT = team === 'T';
-  const shirt = mat(isT ? 0x6e5434 : 0x34445e, 0.9, 0);
-  const pants = mat(isT ? 0x4d4636 : 0x283244, 0.9, 0);
-  const vest = mat(isT ? 0x3b3326 : 0x1f2733, 0.8, 0.05);
-  const skin = mat(0xc8956a, 0.8, 0);
-  const boot = mat(0x1e1a16, 0.8, 0);
-  const headgear = mat(isT ? 0x2b2620 : 0x26301f, 0.7, 0.1);
-  const glove = mat(0x1d1a17, 0.8, 0);
-
-  const group = new THREE.Group();
-  group.rotation.order = 'YXZ';
-  const legs = [];
-  for (const sx of [-0.11, 0.11]) {
-    const leg = new THREE.Group();
-    leg.position.set(sx, 0.85, 0);
-    leg.add(box(0.17, 0.78, 0.2, pants, 0, -0.39, 0));
-    leg.add(box(0.18, 0.12, 0.27, boot, 0, -0.79, -0.03));
-    group.add(leg);
-    legs.push(leg);
-  }
-  const upper = new THREE.Group();
-  upper.position.y = 0.85;
-  group.add(upper);
-  upper.add(box(0.46, 0.62, 0.26, shirt, 0, 0.31, 0));
-  upper.add(box(0.48, 0.36, 0.29, vest, 0, 0.37, 0));
-  upper.add(box(0.47, 0.06, 0.28, mat(0x2a2218), 0, 0.03, 0));
-  const head = new THREE.Group();
-  head.position.y = 0.62;
-  upper.add(head);
-  head.add(box(0.24, 0.26, 0.25, skin, 0, 0.14, 0));
-  if (isT) {
-    head.add(box(0.26, 0.09, 0.27, headgear, 0, 0.255, 0));
-    head.add(box(0.25, 0.11, 0.03, mat(0x3a3128), 0, 0.07, -0.125));
-  } else {
-    head.add(box(0.29, 0.12, 0.3, headgear, 0, 0.26, 0.005));
-    head.add(box(0.22, 0.05, 0.03, mat(0x111111, 0.3, 0.5), 0, 0.17, -0.13));
-  }
-  const aim = new THREE.Group();
-  aim.position.set(0, 0.55, 0);
-  upper.add(aim);
-  aim.add(limb([0.25, 0, 0.02], [0.08, -0.12, -0.33], 0.1, shirt));
-  aim.add(limb([-0.25, 0, 0.02], [-0.02, -0.08, -0.5], 0.1, shirt));
-  aim.add(box(0.08, 0.08, 0.08, glove, 0.08, -0.12, -0.35));
-  aim.add(box(0.08, 0.08, 0.08, glove, -0.01, -0.08, -0.52));
-  const weaponSlot = new THREE.Group();
-  weaponSlot.position.set(0.06, -0.1, -0.36);
-  aim.add(weaponSlot);
-  // Parçaları birleştir: oyuncu başına ~5 çizim çağrısı (32 kişilik odada önemli)
-  for (const part of [...legs, upper, head, aim]) mergeChildren(part);
-  group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-
-  const model = {
-    group, legs, upper, aim, head, weaponSlot, weapon: null,
-    setWeapon(name, atts = []) {
-      if (model.weapon) weaponSlot.remove(model.weapon);
-      model.weapon = null;
-      if (!name) return;
-      const w = createWeaponModel(name, atts);
-      w.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-      if (w.userData.kind === 'bomb') w.position.set(-0.05, 0, 0.05);
-      weaponSlot.add(w);
-      model.weapon = w;
-    },
-  };
-  return model;
 }
