@@ -534,6 +534,7 @@ function onSpawn(m) {
   P.vel.set(0, 0, 0);
   P.yaw = m.yaw; P.pitch = 0; P.crouch = 0; P.punchP = 0; P.punchY = 0; P.onGround = true;
   view.deathAt = 0; view.specId = 0; view.blindDur = 0; view.hurt = 0;
+  selfie.on = false;
   act.kind = null;
   if (S.inv.primary) fillAmmo(S.inv.primary);
   if (S.inv.secondary) fillAmmo(S.inv.secondary);
@@ -1059,6 +1060,36 @@ function cycleSpec(dir) {
   view.specId = r ? r.id : 0;
 }
 
+// ---------------------------------------------------------------- Kendini önden görme (V tuşu)
+// Kamera oyuncunun önüne geçip ona bakar; kendi modelin diğer oyuncuların gördüğü gibi çizilir. Ateş ve hareket
+// değişmez (atışlar yine göz hizasından çıkar). Dürbün açılınca, ölünce ve yeniden doğunca kapanır.
+const selfie = { on: false, model: null, team: null, w: null, att: '', phase: 0 };
+function updateSelfie(dt, now) {
+  const show = selfie.on && S.joined && S.alive && W.scope === 0;
+  if (!show) { if (selfie.model) selfie.model.group.visible = false; return false; }
+  if (!selfie.model || selfie.team !== S.team) {
+    if (selfie.model) scene.remove(selfie.model.group);
+    selfie.model = createPlayerModel(S.team);
+    selfie.team = S.team; selfie.w = null;
+    scene.add(selfie.model.group);
+  }
+  const m = selfie.model, att = attsOf(W.cur).join(',');
+  if (selfie.w !== W.cur || selfie.att !== att) { selfie.w = W.cur; selfie.att = att; m.setWeapon(W.cur, attsOf(W.cur)); }
+  const sp = Math.hypot(P.vel.x, P.vel.z), sin = Math.sin(P.yaw), cos = Math.cos(P.yaw);
+  if (sp > 0.3) selfie.phase += dt * (3.5 + sp * 2.1);
+  m.group.visible = true;
+  m.group.position.copy(P.pos);
+  m.group.rotation.y = P.yaw;
+  m.update({ crouch: P.crouch, pitch: P.pitch, speed: sp, phase: selfie.phase, air: P.onGround ? 0 : 1, time: now / 1000,
+    moveX: sp > 0.3 ? (P.vel.x * cos - P.vel.z * sin) / sp : 0, moveZ: sp > 0.3 ? (P.vel.x * sin + P.vel.z * cos) / sp : -1 });
+  // Kamera: oyuncunun 2,8 m önünde, göğüs hizasına bakar; araya duvar girerse yaklaşır
+  const eye = [P.pos.x, P.pos.y + eyeHeight() - 0.15, P.pos.z], dir = [-sin, 0.08, -cos];
+  const dist = Math.max(0.6, Math.min(2.8, raycastWorld(MAP.boxes, eye, dir, 3.1).t - 0.3));
+  camera.position.set(eye[0] + dir[0] * dist, eye[1] + dir[1] * dist, eye[2] + dir[2] * dist);
+  camera.lookAt(P.pos.x, P.pos.y + eyeHeight() - 0.35, P.pos.z);
+  return true;
+}
+
 let specR = null;
 function updateCamera(dt, now) {
   let vmVisible = false;
@@ -1067,6 +1098,7 @@ function updateCamera(dt, now) {
     camera.position.set(P.pos.x, P.pos.y + eyeHeight(), P.pos.z);
     camera.rotation.set(P.pitch + P.punchP, P.yaw + P.punchY, 0);
     vmVisible = W.scope === 0 || !WEAPONS[W.cur]?.scope;
+    if (updateSelfie(dt, now)) vmVisible = false;
   } else if (S.joined && (S.team === 'T' || S.team === 'CT')) {
     const since = now - view.deathAt;
     if (view.deathAt && since < 2600) {
@@ -1094,6 +1126,7 @@ function updateCamera(dt, now) {
     camera.position.set(Math.sin(t) * 38, 30, Math.cos(t) * 30);
     camera.lookAt(0, 0, 0);
   }
+  if (!(S.joined && S.alive)) updateSelfie(dt, now);
   if (view.shake > 0.002) {
     camera.rotation.x += (Math.random() - 0.5) * view.shake * 0.06;
     camera.rotation.y += (Math.random() - 0.5) * view.shake * 0.06;
@@ -1184,7 +1217,7 @@ function updateHUD(now, dt) {
   const spread = S.alive ? currentSpread(w) : 0;
   const adsNow = S.alive && W.scope > 0 && w && !w.scope;
   // Her silahta nişangah (dürbünlü silahlarda dürbün kapalıyken de); açıklık o anki sapmayı gösterir
-  hud.crosshair(Math.min(44, spread * 420), S.alive ? W.scope === 0 : !!specR, !!(S.alive && w && (w.scope || spread > 0.03)));
+  hud.crosshair(Math.min(44, spread * 420), S.alive ? W.scope === 0 && !selfie.on : !!specR, !!(S.alive && w && (w.scope || spread > 0.03)));
   hud.redDot(adsNow);
   hud.scope(S.alive && W.scope > 0 && !!w?.scope);
   view.hurt = Math.max(0, view.hurt - dt * 1.5);
@@ -1339,6 +1372,7 @@ window.addEventListener('keydown', (e) => {
     case 'KeyY': e.preventDefault(); chatOpen = true; chatTeam = false; hud.openChat(false); break;
     case 'KeyU': e.preventDefault(); chatOpen = true; chatTeam = true; hud.openChat(true); break;
     case 'KeyM': openTeamMenu(); break;
+    case 'KeyV': if (S.alive) { selfie.on = !selfie.on; hud.note(selfie.on ? 'Önden görünüm açık (V ile kapat)' : 'Önden görünüm kapalı', 1500); } break;
   }
 });
 window.addEventListener('keyup', (e) => {
@@ -1717,4 +1751,4 @@ connect();
 requestAnimationFrame(frame);
 
 // Hata ayıklama için konsoldan erişim
-window.__dust = { S, P, W, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };
+window.__dust = { S, P, W, selfie, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };
