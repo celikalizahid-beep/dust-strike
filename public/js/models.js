@@ -528,35 +528,84 @@ function applyAttachments(K, g, name, kind, atts, muzzle, left) {
 }
 
 // ---------------------------------------------------------------- Birinci şahıs kollar
+// Eller parmaklarıyla kurulur: kabzayı saran sağ el, el kundağını alttan kavrayan sol el. Renkler üçüncü şahıs
+// modeliyle (player.js) aynıdır. Parçalar elin kendi uzayında tanımlanır, sonra silaha göre yerleştirilir.
+function placeParts(g, parts, pos, rot) {
+  const m = new THREE.Matrix4().compose(new THREE.Vector3(...pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot)), new THREE.Vector3(1, 1, 1));
+  for (const part of parts) { part.updateMatrix(); part.applyMatrix4(m); g.add(part); }
+}
+// Dik bir kabzayı kavrayan el. Elin uzayı: kabza ekseni y, namlu −z; side +1 sağ el (avuç sağda), −1 sol el.
+function gripHand(K, glove, side) {
+  // Elin sırtı ve avuç içi yuvarlak (basık küre): kutu gibi durmasın
+  const blob = (sx, sy, sz, x, y, z) => { const m = K.sph(1, glove, x, y, z); m.scale.set(sx, sy, sz); return m; };
+  const parts = [
+    blob(0.019, 0.046, 0.04, side * 0.031, 0, 0.012),           // elin sırtı
+    blob(0.028, 0.044, 0.016, side * 0.008, 0, 0.046),          // avuç içi (kabzanın arkası)
+    K.capsule([side * 0.03, 0.036, -0.012], [side * 0.014, 0.04, -0.062], 0.0095, glove), // işaret parmağı (tetikte)
+    K.capsule([side * -0.004, 0.03, 0.045], [side * -0.025, 0.036, 0.002], 0.0105, glove), // başparmak
+  ];
+  for (const y of [0.012, -0.012, -0.035]) {
+    parts.push(K.capsule([side * 0.03, y, -0.012], [side * 0.004, y, -0.035], 0.0095, glove),
+      K.capsule([side * 0.004, y, -0.035], [side * -0.021, y, -0.016], 0.0092, glove));
+  }
+  for (const y of [0.036, 0.012, -0.012, -0.035]) parts.push(K.sph(0.0108, glove, side * 0.036, y, -0.012)); // parmak boğumları
+  return parts;
+}
+// El kundağını alttan kavrayan el. Elin uzayı: kundak ekseni z, avuç yukarı; parmaklar sağ yandan yukarı kıvrılır.
+function cupHand(K, glove) {
+  const palm = K.sph(1, glove, 0, -0.016, 0);
+  palm.scale.set(0.04, 0.014, 0.048);
+  const parts = [
+    palm,
+    K.capsule([-0.036, -0.01, 0.022], [-0.041, 0.026, -0.006], 0.0105, glove), // başparmak (sol yanda)
+  ];
+  for (const z of [-0.032, -0.011, 0.01, 0.031]) {
+    parts.push(K.capsule([0.034, -0.014, z], [0.041, 0.02, z], 0.0095, glove), K.capsule([0.041, 0.02, z], [0.031, 0.036, z], 0.009, glove));
+  }
+  return parts;
+}
+
 function createArms(kind, team, left) {
   const K = kit(true);
   const g = new THREE.Group();
-  const sleeve = mat(team === 'T' ? 0x5e4a30 : 0x2f3c52, 0.92, 0, MATTE);
-  const cuff = mat(team === 'T' ? 0x4a3a25 : 0x243043, 0.95, 0, MATTE);
-  const glove = mat(team === 'T' ? 0x2b2620 : 0x1a1a1a, 0.72, 0, MATTE);
+  const sleeve = mat(team === 'T' ? 0x7a6542 : 0x2f3d55, 0.92, 0, MATTE);
+  const cuff = mat(team === 'T' ? 0x5a4a30 : 0x222c40, 0.95, 0, MATTE);
+  const glove = mat(team === 'T' ? 0x24201b : 0x17191c, 0.72, 0, MATTE);
   const arm = (hand, elbow) => {
     g.add(K.capsule(hand, elbow, 0.04, sleeve));
     const d = new THREE.Vector3(...elbow).sub(new THREE.Vector3(...hand)).normalize().multiplyScalar(0.05);
     g.add(K.capsule(hand, [hand[0] + d.x, hand[1] + d.y, hand[2] + d.z], 0.043, cuff)); // kol ağzı
   };
   if (kind === 'bomb') {
-    g.add(K.bx(0.08, 0.06, 0.1, glove, -0.14, 0, 0), K.bx(0.08, 0.06, 0.1, glove, 0.14, 0, 0));
-    arm([-0.14, -0.01, 0.06], [-0.24, -0.2, 0.35]);
-    arm([0.14, -0.01, 0.06], [0.24, -0.2, 0.35]);
+    // C4 iki yandan tutulur: avuçlar yanlarda, parmaklar üstte
+    for (const s of [-1, 1]) {
+      g.add(K.bx(0.03, 0.07, 0.1, glove, s * 0.135, 0, 0));
+      for (const z of [-0.03, -0.01, 0.01, 0.03]) g.add(K.capsule([s * 0.128, 0.03, z], [s * 0.09, 0.043, z], 0.0095, glove));
+      g.add(K.capsule([s * 0.13, -0.02, 0.04], [s * 0.1, -0.03, 0.02], 0.0105, glove));
+      arm([s * 0.14, -0.01, 0.06], [s * 0.24, -0.2, 0.35]);
+    }
     mergeChildren(g, VM_MAT);
     return g;
   }
-  // Sağ el: kabzayı kavrayan avuç ve öne dolanan parmaklar
-  g.add(K.bx(0.058, 0.07, 0.08, glove, 0.006, -0.04, 0.04, -0.3),
-    K.bx(0.046, 0.05, 0.03, glove, -0.006, -0.032, -0.004, -0.3));
-  arm([0.008, -0.07, 0.085], [0.09, -0.24, 0.44]);
+  if (kind === 'knife') {
+    // Bıçak sapı namlu ekseninde (z): el sapı yandan kavrar
+    placeParts(g, gripHand(K, glove, 1), [0.004, -0.002, 0.03], [Math.PI / 2 - 0.12, 0, 0.5]);
+    arm([0.02, -0.04, 0.09], [0.11, -0.22, 0.44]);
+  } else if (kind === 'nade') {
+    placeParts(g, gripHand(K, glove, 1), [0.004, 0.03, -0.026], [-0.1, 0, 0]);
+    arm([0.012, -0.03, 0.03], [0.1, -0.22, 0.4]);
+  } else {
+    // Tüfek ve tabanca: sağ el kabzada (kabza hafif öne eğik)
+    placeParts(g, gripHand(K, glove, 1), [0.002, -0.04, 0.03], [-0.3, 0, 0]);
+    arm([0.008, -0.07, 0.085], [0.09, -0.24, 0.44]);
+  }
   if (kind === 'rifle' && left) {
-    g.add(K.bx(0.07, 0.055, 0.1, glove, left.x - 0.01, left.y - 0.03, left.z),
-      K.bx(0.02, 0.04, 0.08, glove, left.x + 0.03, left.y - 0.005, left.z)); // başparmak yanı
-    arm([left.x - 0.02, left.y - 0.05, left.z + 0.045], [-0.2, -0.24, 0.12]);
+    placeParts(g, cupHand(K, glove), [left.x, left.y - 0.012, left.z], [0, 0, 0]);
+    arm([left.x - 0.02, left.y - 0.045, left.z + 0.05], [-0.2, -0.24, 0.12]);
   } else if (kind === 'pistol') {
-    g.add(K.bx(0.056, 0.056, 0.085, glove, -0.036, -0.05, 0.04, -0.3));
-    arm([-0.04, -0.07, 0.08], [-0.17, -0.25, 0.4]);
+    // Destek eli: sağ elin parmaklarını soldan sarar, biraz aşağıda
+    placeParts(g, gripHand(K, glove, -1), [0.0, -0.052, 0.024], [-0.3, 0, 0]);
+    arm([-0.04, -0.075, 0.08], [-0.17, -0.25, 0.4]);
   }
   mergeChildren(g, VM_MAT);
   return g;
