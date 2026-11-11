@@ -76,7 +76,7 @@ const httpServer = http.createServer((req, res) => {
   }
   if (urlPath.startsWith('/admin/api/')) return adminApi(req, res, urlPath.slice('/admin/api'.length));
   const extra = {};
-  if (urlPath === '/admin' || urlPath === '/admin/') {
+  if (urlPath === '/admin' || urlPath === '/admin/' || urlPath === '/admin.html') {
     // Admin sayfası başka sitelerin içine gömülemez, kendi dosyaları dışında betik çalıştıramaz
     urlPath = '/admin.html';
     extra['X-Frame-Options'] = 'DENY';

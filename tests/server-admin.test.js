@@ -193,6 +193,20 @@ test('admin işlemleri', async (t) => {
   });
 });
 
+test('admin sayfası her iki adresinde de çerçeveye gömülmeye ve yabancı betiğe karşı korumalı gelir', async (t) => {
+  const srv = await startServer();
+  t.after(() => srv.stop());
+  for (const route of ['/admin', '/admin/', '/admin.html']) {
+    const res = await fetch(srv.url + route);
+    assert.equal(res.status, 200, route);
+    assert.equal(res.headers.get('x-frame-options'), 'DENY', `${route}: X-Frame-Options`);
+    assert.match(res.headers.get('content-security-policy') || '', /script-src 'self'/, `${route}: Content-Security-Policy`);
+    assert.match(await res.text(), /<script src="\/js\/admin\.js">/, `${route}: sayfa içeriği`);
+  }
+  // Oyun sayfası bu başlıkları taşımaz (kendi satır içi betikleri var)
+  assert.equal((await fetch(srv.url + '/')).headers.get('content-security-policy'), null);
+});
+
 test('ban listesi sunucu yeniden başlayınca korunur', async (t) => {
   // İkinci sunucu aynı veri klasörüyle açılır (stop() kendi klasörünü sildiği için kopyası kullanılır)
   const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'dust-copy-'));
