@@ -207,6 +207,16 @@ Silah modelleri (`public/js/models.js`): metal, ahşap ve plastik parçalar ayr�
 yansıtır, ahşapta damar, yüzeylerde ince doku). Elindeki silahta kenarlar yuvarlatılmıştır ve arpacık, ray,
 kavisli şarjör, dürbün camı gibi ayrıntılar vardır; diğer oyuncuların silahları performans için sade tutulur.
 
+### FPS sınırını kaldır
+
+Ayarlar → Görüntü → **FPS sınırını kaldır** (yalnızca bilgisayarda). Tarayıcılar oyunu ekranın yenileme hızına kilitler
+(60 Hz ekranda 60 FPS). Bu seçenek açıkken:
+
+- **Tarayıcıda:** oyun ekranı beklemeden çizer (en fazla ~250 FPS). 60 Hz ekranda göze görünen kare yine 60'tır;
+  kazanç daha düşük gecikmedir. Bilgisayar daha çok ısınır.
+- **Windows uygulamasında:** sınır tamamen kalkar (dikey eşitleme kapanır). Değiştirince uygulama kendini yeniden
+  başlatır. Görüntüde yırtılma olabilir.
+
 ## Klasik mod kuralları
 
 - İki takım: **Teröristler (T)** ve **Anti-Terör (CT)**. Her iki takımda en az 1 kişi olunca maç başlar;
