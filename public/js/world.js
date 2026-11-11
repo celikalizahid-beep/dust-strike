@@ -583,7 +583,8 @@ function makeDust(count, color) {
 
 // Tavanlı yerlerde (tünel, iç mekân) lambalar: armatür, parlayan ampul ve zemine düşen sıcak ışık havuzu.
 // Gerçek ışık kaynağı değildir (onlarcası telefonda pahalı olur); ışık havuzu toplamalı karışımla çizilir.
-function makeLamps(map, hdr) {
+// glow kapalıyken (en düşük kalite) ampul sönük çizilir, ışık havuzu hiç çizilmez
+function makeLamps(map, hdr, glow = true) {
   const roofs = map.boxes.filter((b) => b.type === 'block' && b.mat === 'roof');
   if (!roofs.length) return null;
   const floorAt = (x, z) => {
@@ -617,9 +618,10 @@ function makeLamps(map, hdr) {
   const group = new THREE.Group();
   const add = (builder, material, flags = {}) => { const m = new THREE.Mesh(builder.build(), material); Object.assign(m.userData, flags); group.add(m); return m; };
   add(fix, new THREE.MeshStandardMaterial({ color: 0x25221e, roughness: 0.6, metalness: 0.5 })).castShadow = false;
-  add(bulb, new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.84, 0.56).multiplyScalar(hdr) }));
-  const glow = add(pool, new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0xffb468).multiplyScalar(1.5), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), { noAO: true });
-  glow.renderOrder = 2;
+  add(bulb, new THREE.MeshBasicMaterial({ color: glow ? new THREE.Color(1.0, 0.84, 0.56).multiplyScalar(hdr) : new THREE.Color(0x8a8272) }));
+  if (!glow) { tex.dispose(); return group; }
+  const light = add(pool, new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0xffb468).multiplyScalar(1.5), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), { noAO: true });
+  light.renderOrder = 2;
   return group;
 }
 
@@ -760,7 +762,7 @@ export function buildWorld(scene, map, opts = {}) {
   group.add(sky);
   const backdrop = makeBackdrop(map, map.theme, theme);
   if (backdrop) group.add(backdrop);
-  const lamps = makeLamps(map, opts.hdr || 1);
+  const lamps = makeLamps(map, opts.hdr || 1, opts.detail !== false);
   if (lamps) group.add(lamps);
 
   // Işıklar
