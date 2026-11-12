@@ -490,7 +490,7 @@ class Room {
     if (a && a !== v) {
       const dealt = Math.min(dmg.hp, v.hp + dmg.hp); // öldürücü vuruşta kalan candan fazlası sayılmaz
       a.dmg += dealt;
-      send(a, { t: 'hit', v: v.id, d: dealt, hs: !!hs, p: [v.pos[0], v.pos[1], v.pos[2]] });
+      send(a, { t: 'hit', v: v.id, d: dealt, hs: !!hs, k: v.hp <= 0, p: [v.pos[0], v.pos[1], v.pos[2]] });
     }
     if (v.hp <= 0) { v.hp = 0; this.kill(v, a, weapon, hs); }
   }

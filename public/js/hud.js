@@ -121,6 +121,42 @@ export class HUD {
   }
   flash(op) { const v = op.toFixed(3); if (this.cache.flash !== v) { this.cache.flash = v; $('flash').style.opacity = v; } }
   hurt(op) { const v = op.toFixed(3); if (this.cache.hurt !== v) { this.cache.hurt = v; $('hurt').style.opacity = v; } }
+  // Verilen hasar: vurulan yerin ekrandaki konumunda yukarı süzülen sayı
+  damageNumber(x, y, d, hs, kill) {
+    const box = $('dmgNums');
+    const el = document.createElement('div');
+    el.className = 'dmgnum' + (hs ? ' hs' : '') + (kill ? ' kill' : '');
+    el.textContent = d;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    box.appendChild(el);
+    while (box.children.length > 12) box.firstChild.remove();
+    setTimeout(() => el.remove(), 850);
+  }
+  // Hasarın geldiği yön: nişangahın çevresinde kırmızı yaylar. list: [{ a: açı (rad, 0 = ön, saat yönünde), o: saydamlık }]
+  damageDirs(list) {
+    const box = $('dmgDir');
+    while (box.children.length > list.length) box.lastChild.remove();
+    while (box.children.length < list.length) { const el = document.createElement('div'); el.className = 'dmgarc'; box.appendChild(el); }
+    list.forEach((it, i) => {
+      const el = box.children[i];
+      el.style.transform = `rotate(${it.a.toFixed(3)}rad)`;
+      el.style.opacity = it.o.toFixed(2);
+    });
+  }
+  streak(title, sub = '') {
+    $('streak').innerHTML = title ? `<b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}` : '';
+    clearTimeout(this.streakTimer);
+    if (title) this.streakTimer = setTimeout(() => { $('streak').innerHTML = ''; }, 2500);
+  }
+  // Ölünce: kime ne kadar hasar verdin / kimden ne kadar aldın. rows: [{ name, give, giveN, take, takeN }]
+  deathSummary(rows) {
+    const el = $('deathSum');
+    el.classList.toggle('hidden', !rows || !rows.length);
+    if (!rows || !rows.length) return;
+    el.innerHTML = '<h4>Hasar özeti</h4>' + rows.map((r) => `<div class="row"><span>${esc(r.name)}</span><span>` +
+      `<span class="give">verdin ${r.give}${r.giveN ? ` (${r.giveN} isabet)` : ''}</span> · <span class="take">aldın ${r.take}${r.takeN ? ` (${r.takeN} isabet)` : ''}</span></span></div>`).join('');
+  }
   scope(on) { this.toggle('scope', 'hidden', !on); }
   redDot(on) { this.toggle('reddot', 'hidden', !on); }
   hint(text) { this.set('hint', text || ''); }
@@ -184,7 +220,7 @@ export class HUD {
   scoreboard(show, data) {
     $('scoreboard').classList.toggle('hidden', !show);
     if (!show || !data) return;
-    const { roster, myId, score, round, bombCarrier, myTeam, mode, phase } = data;
+    const { roster, myId, score, round, bombCarrier, myTeam, mode, phase, awards } = data;
     const table = (ps, cls) => {
       const rows = ps.sort((a, b) => b.k - a.k || a.d - b.d).map((p, i) => {
         const status = !p.alive ? 'ÖLÜ' : p.id === bombCarrier && myTeam === 'T' ? 'BOMBA' : '';
@@ -197,7 +233,11 @@ export class HUD {
       table(roster.filter((p) => p.team === team), () => teamCls(team));
     const modeName = { classic: 'Klasik', tdm: 'Takımlı Ölüm Maçı', ffa: 'Herkes Tek' }[mode] || '';
     const sub = mode === 'classic' ? (round ? 'Raund ' + round : 'Isınma') : phase === 'warmup' ? 'Isınma' : phase === 'gameover' ? 'Maç bitti' : 'En çok leş kazanır';
-    $('sbBody').innerHTML = `<h2>DUST STRIKE · ${modeName} · ${sub}</h2>` +
+    // Maç sonu ödülleri (yalnızca maç bittiğinde gelir)
+    const award = (label, a, unit) => (a ? `<div class="award"><small>${label}</small><b>${esc(a.name)}</b><span>${a.v} ${unit}</span></div>` : '');
+    const aw = awards && phase === 'gameover'
+      ? `<div class="awards">${award('Maçın yıldızı', awards.mvp, 'leş')}${award('Keskin nişancı', awards.hs, 'kafadan leş')}${award('En uzun seri', awards.streak, 'leş üst üste')}${award('En çok hasar', awards.dmg, 'hasar')}</div>` : '';
+    $('sbBody').innerHTML = `<h2>DUST STRIKE · ${modeName} · ${sub}</h2>` + aw +
       (mode === 'ffa' ? table(roster, () => '') : section('T', 'Teröristler') + section('CT', 'Anti-Terör Timi'));
   }
 
