@@ -47,7 +47,7 @@ const START_MONEY = 800;
 const MAX_MONEY = 16000;
 const RESPAWN_DELAY = 2.5;
 const HE_RADIUS = 9;
-const DM_TIME = Number(process.env.DM_TIME) || 10 * 60; // ölüm maçı süresi (sn)
+const DM_TIME = Math.max(5, Number(process.env.DM_TIME) || 600); // ölüm maçı süresi (sn); DM_TIME ile değişir (testler için)
 const SPAWN_PROTECT = 2;
 
 const MODES = {
@@ -292,7 +292,7 @@ class Room {
   add(p, team) {
     p.room = this;
     this.players.set(p.id, p);
-    p.kills = 0; p.deaths = 0; p.alive = false; p.lastPrimary = null; p.team = null;
+    p.kills = 0; p.deaths = 0; p.streak = 0; p.bestStreak = 0; p.hsKills = 0; p.dmg = 0; p.alive = false; p.lastPrimary = null; p.team = null;
     p.money = this.dm ? MAX_MONEY : START_MONEY;
     send(p, { t: 'room', mode: this.mode, map: this.map.id, code: this.code });
     this.setTeam(p, team, true);
@@ -487,6 +487,11 @@ class Room {
     v.armor = Math.max(0, v.armor - dmg.armor);
     if (v.armor === 0) v.helmet = false;
     send(v, { t: 'hurt', a: a ? a.id : 0, d: dmg.hp, hp: Math.max(0, v.hp), armor: v.armor, from: a ? a.pos : null });
+    if (a && a !== v) {
+      const dealt = Math.min(dmg.hp, v.hp + dmg.hp); // öldürücü vuruşta kalan candan fazlası sayılmaz
+      a.dmg += dealt;
+      send(a, { t: 'hit', v: v.id, d: dealt, hs: !!hs, p: [v.pos[0], v.pos[1], v.pos[2]] });
+    }
     if (v.hp <= 0) { v.hp = 0; this.kill(v, a, weapon, hs); }
   }
 
@@ -494,8 +499,13 @@ class Room {
     if (!v.alive) return;
     v.alive = false;
     v.deaths++;
+    const ended = v.streak; // kurbanın biten leş serisi
+    v.streak = 0;
     if (k && k !== v) {
       k.kills++;
+      k.streak++;
+      if (k.streak > k.bestStreak) k.bestStreak = k.streak;
+      if (hs) k.hsKills++;
       if (!this.dm) addMoney(k, WEAPONS[weapon]?.reward ?? 300);
       if (this.mode === 'tdm' && this.phase === 'live') this.score[k.team]++;
       sendYou(k);
@@ -511,7 +521,7 @@ class Room {
     this.dropBombIfCarrier(v);
     if (this.bomb?.planting?.id === v.id) this.bomb.planting = null;
     if (this.bomb?.defusing?.id === v.id) { this.bomb.defusing = null; this.broadcast(this.bombMsg()); }
-    this.broadcast({ t: 'kill', k: k ? k.id : 0, v: v.id, w: weapon, hs: !!hs });
+    this.broadcast({ t: 'kill', k: k ? k.id : 0, v: v.id, w: weapon, hs: !!hs, s: k && k !== v ? k.streak : 0, e: ended });
     if (this.dm || this.phase === 'warmup') v.respawnAt = now() + RESPAWN_DELAY * 1000;
     sendYou(v);
     this.broadcast(this.rosterMsg());
@@ -563,7 +573,7 @@ class Room {
     this.loss = { T: 0, CT: 0 };
     this.round = 0;
     for (const p of this.players.values()) {
-      p.kills = 0; p.deaths = 0; p.money = this.dm ? MAX_MONEY : START_MONEY; p.alive = false;
+      p.kills = 0; p.deaths = 0; p.streak = 0; p.bestStreak = 0; p.hsKills = 0; p.dmg = 0; p.money = this.dm ? MAX_MONEY : START_MONEY; p.alive = false;
     }
     if (this.dm) {
       this.phase = 'live';
@@ -648,9 +658,19 @@ class Room {
       winner = top ? top.id : null;
     }
     this.msg = `MAÇ BİTTİ — ${msg}`;
-    this.broadcast({ t: 'rend', winner, reason: 'time', msg, sub, final: true });
+    this.broadcast({ t: 'rend', winner, reason: 'time', msg, sub, final: true, awards: this.awards() });
     this.broadcast(this.stateMsg());
     this.broadcast(this.rosterMsg());
+  }
+
+  // Maç sonu ödülleri: her dalda en iyi oyuncu (değer 0 ise ödül verilmez)
+  awards() {
+    const ps = [...this.players.values()];
+    const best = (f) => {
+      const top = ps.filter((p) => f(p) > 0).sort((a, b) => f(b) - f(a) || a.deaths - b.deaths)[0];
+      return top ? { id: top.id, name: top.name, v: Math.round(f(top)) } : null;
+    };
+    return { mvp: best((p) => p.kills), hs: best((p) => p.hsKills), streak: best((p) => p.bestStreak), dmg: best((p) => p.dmg) };
   }
 
   checkElimination() {
@@ -1236,7 +1256,7 @@ function makePlayer(ws, addr, name = 'Oyuncu') {
     primary: null, secondary: null, lastPrimary: null, att: { 1: [], 2: [] }, lastAtt: [], nades: { he: 0, flash: 0, smoke: 0 },
     wid: { 1: 0, 2: 0 }, buys: [],
     pos: [0, 0, 0], yaw: 0, pitch: 0, crouch: 0, weapon: 'knife',
-    kills: 0, deaths: 0, sid: 0, respawnAt: 0, protectUntil: 0, lastShot: {}, ping: 0,
+    kills: 0, deaths: 0, streak: 0, bestStreak: 0, hsKills: 0, dmg: 0, sid: 0, respawnAt: 0, protectUntil: 0, lastShot: {}, ping: 0,
   };
 }
 
