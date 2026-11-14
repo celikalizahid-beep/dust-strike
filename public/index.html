@@ -99,6 +99,28 @@
   #scope::before { left: 0; right: 0; top: 50%; height: 1px; }
   #scope::after { top: 0; bottom: 0; left: 50%; width: 1px; }
   #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  #dmgNums { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .dmgnum { position: absolute; font-weight: 800; font-size: 22px; color: #fff; text-shadow: 0 0 3px #000, 0 1px 2px #000; transform: translate(-50%, -50%); animation: dmgUp .8s ease-out forwards; }
+  .dmgnum.hs { color: #ff5a4a; font-size: 28px; }
+  .dmgnum.kill { color: #ffd23c; }
+  @keyframes dmgUp { 0% { opacity: 0; margin-top: 6px; } 12% { opacity: 1; } 100% { opacity: 0; margin-top: -54px; } }
+  #dmgDir { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+  .dmgarc { position: absolute; left: -90px; top: -90px; width: 180px; height: 180px; border-radius: 50%; border: 7px solid transparent; border-top-color: rgba(255, 40, 30, .95); box-sizing: border-box; clip-path: polygon(28% 0, 72% 0, 60% 22%, 40% 22%); filter: drop-shadow(0 0 4px rgba(255,0,0,.8)); }
+  #streak { position: absolute; top: 60%; left: 0; right: 0; text-align: center; pointer-events: none; }
+  #streak b { display: inline-block; font-size: 30px; letter-spacing: 2px; color: #ffd23c; text-shadow: 0 0 12px rgba(255,150,0,.9), 0 2px 3px #000; animation: streakIn 2.4s ease-out forwards; }
+  #streak small { display: block; font-size: 14px; color: #fff; text-shadow: 0 1px 2px #000; animation: streakIn 2.4s ease-out forwards; }
+  @keyframes streakIn { 0% { opacity: 0; transform: scale(1.8); } 10% { opacity: 1; transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+  #deathSum { position: absolute; bottom: 128px; left: 50%; transform: translateX(-50%); min-width: 260px; padding: 8px 12px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.15); border-radius: 4px; font-size: 13px; color: #ddd; }
+  #deathSum h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: 1px; color: var(--hud); text-transform: uppercase; }
+  #deathSum .row { display: flex; justify-content: space-between; gap: 18px; padding: 1px 0; }
+  #deathSum .give { color: #8fe08f; } #deathSum .take { color: #ff8a7a; }
+  body.touch #deathSum { bottom: 92px; font-size: 11px; min-width: 200px; }
+  body.touch #streak b { font-size: 20px; }
+  .awards { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+  .award { flex: 1 1 140px; padding: 8px 10px; background: rgba(255,178,40,.1); border: 1px solid var(--hud-dim); border-radius: 4px; text-align: center; }
+  .award small { display: block; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--hud); }
+  .award b { display: block; font-size: 16px; color: #fff; margin: 2px 0; }
+  .award span { font-size: 12px; color: #ccc; }
   #hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(circle, transparent 45%, rgba(200,0,0,.55) 100%); }
 
   /* ---------- Paneller ---------- */
@@ -360,6 +382,10 @@
   <div id="enemyName"></div>
   <div id="note"></div>
   <div id="spec"></div>
+  <div id="deathSum" class="hidden"></div>
+  <div id="streak"></div>
+  <div id="dmgDir"></div>
+  <div id="dmgNums"></div>
   <div id="progress" class="hidden"><div id="progressLabel"></div><div class="bar"><div id="progressFill"></div></div></div>
   <div id="bottom">
     <div class="blk" id="hpBlk"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><span id="hpVal">100</span></div>

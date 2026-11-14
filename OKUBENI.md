@@ -116,6 +116,18 @@ IP sayılıp banlanmasını önlemek için).
 - **Öldüren kamerası:** Ölünce, kısa düşüşün ardından kamera seni öldüren oyuncunun omzunun arkasına geçer
   (yaklaşık 3 saniye ya da yeniden doğana kadar).
 
+## Vuruş göstergeleri, seriler, maç sonu
+
+- **Hasar sayıları:** Birini vurunca verdiğin hasar vurduğun yerde belirir (kafadan vuruş kırmızı, öldüren vuruş sarı).
+- **Hasar yönü:** Vurulunca nişangahın çevresinde, ateşin geldiği yönü gösteren kırmızı bir yay çıkar.
+- **Hasar özeti:** Ölünce, o canda kime ne kadar hasar verdiğin ve kimden ne kadar aldığın listelenir.
+- **Leş serisi:** Ölmeden art arda leş alınca duyuru ve ses çıkar (Çifte leş, Üçlü seri, Durdurulamıyor…). Başkasının
+  serisini bitirmek de duyurulur.
+- **Maç sonu ekranı:** Ölüm maçları bitince skor tablosunun üstünde ödüller görünür: maçın yıldızı, keskin nişancı
+  (kafadan leş), en uzun seri, en çok hasar.
+- **Sesler:** Adımlar sağ/sol ayak olarak farklı tınlar; duvarın arkasındaki sesler (adım, silah, patlama) boğuk ve
+  kısık duyulur; zıplayıp yere inen oyuncunun sesi yönüyle birlikte gelir. Kulaklıkla düşmanın yeri anlaşılır.
+
 ## Oyun modları
 
 Menüden mod seçilir; üç mod aynı anda oynanabilir (her biri ayrı oda).

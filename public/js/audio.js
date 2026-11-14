@@ -46,9 +46,28 @@ function makeImpulse(sec, decay) {
 }
 
 // Sesi ana çıkışa (konum verildiyse 3D panner üzerinden) bağlayan giriş düğümü
+// Duvar arkası denetimi: ses kaynağıyla dinleyen arasında duvar varsa ses boğuk ve kısık duyulur.
+// Oyun, haritayı bilen bir işlev verir (setOccluder); verilmezse sesler olduğu gibi çalınır.
+let occluder = null;
+export function setOccluder(fn) { occluder = fn; }
+
 function out(pos, vol = 1, reverb = 1) {
-  const g = ctx.createGain();
+  let g = ctx.createGain();
   g.gain.value = vol;
+  if (pos && occluder && occluder(pos)) {
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 750;
+    const dst = g;
+    dst.gain.value = vol * 0.6;
+    g = ctx.createGain();
+    g.connect(f);
+    f.connect(dst);
+    return wire(dst, pos, reverb * 1.3) && g;
+  }
+  return wire(g, pos, reverb);
+}
+function wire(g, pos, reverb) {
   if (pos) {
     const p = ctx.createPanner();
     // HRTF pahalıdır: sadece yakındaki sesler için kullanılır (kalabalık maçlarda performans)
@@ -142,18 +161,20 @@ export function gunSilenced(pos) {
   burst(o, t + 0.04, 0.05, 'bandpass', 2600, 3, 0.15); // mekanizma sesi
 }
 
-export function step(pos, vol = 1) {
+// foot: 0 sol, 1 sağ (iki ayak hafif farklı tınlar: adımlar tek düze duyulmaz)
+export function step(pos, vol = 1, foot = 0) {
   if (!ctx) return;
   const t = ctx.currentTime;
   const o = out(pos, vol, 0.4);
-  burst(o, t, 0.08, 'bandpass', 380 + Math.random() * 300, 1.2, 0.6, 0.004);
-  tone(o, t, 0.06, 'sine', 95, 55, 0.35, 0.003);
+  burst(o, t, 0.08, 'bandpass', (foot ? 470 : 360) + Math.random() * 220, 1.2, 0.6, 0.004);
+  tone(o, t, 0.06, 'sine', foot ? 104 : 90, 55, 0.35, 0.003);
+  burst(o, t + 0.035, 0.05, 'highpass', 2600, 0.8, 0.12, 0.004); // kum/çakıl hışırtısı
 }
 
-export function land(vol = 0.5) {
+export function land(vol = 0.5, pos = null) {
   if (!ctx) return;
   const t = ctx.currentTime;
-  const o = out(null, vol, 0.3);
+  const o = out(pos, vol, 0.3);
   burst(o, t, 0.12, 'lowpass', 500, 1, 0.8, 0.003);
 }
 
@@ -215,6 +236,15 @@ export function headshot() {
   tone(o, t, 0.3, 'sine', 1900, 1700, 0.35);
   tone(o, t, 0.22, 'sine', 2850, 2600, 0.2);
   burst(o, t, 0.05, 'highpass', 4000, 1, 0.4);
+}
+// Leş serisi duyurusu: seri büyüdükçe daha çok nota
+export function streak(level) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = out(null, 0.5, 0.7);
+  const notes = [392, 523, 659, 784, 1046, 1318].slice(0, Math.max(2, Math.min(6, level)));
+  notes.forEach((f, i) => tone(o, t + i * 0.085, 0.22, 'sawtooth', f, f * 1.01, 0.16, 0.008));
+  burst(o, t, 0.18, 'highpass', 3000, 1, 0.18);
 }
 export function hurt() {
   if (!ctx) return;

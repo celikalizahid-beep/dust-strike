@@ -336,11 +336,13 @@ function onMessage(m) {
     case 'snap': applySnap(m.ps, now); break;
     case 'shot': onRemoteShot(m); break;
     case 'hurt': onHurt(m); break;
+    case 'hit': onHit(m); break;
     case 'kill': onKill(m); break;
     case 'rend':
       hud.center(m.msg, m.sub, m.final ? 9000 : 5000);
       if (S.joined) sfx.roundEnd(S.mode === 'ffa' ? m.winner === S.myId : m.winner === S.team);
-      if (m.final) showScoreboard(); // ölüm maçı bitince sonuç tablosu
+      S.awards = m.final ? m.awards || null : null;
+      if (m.final) showScoreboard(); // ölüm maçı bitince sonuç tablosu ve ödüller
       break;
     case 'bomb': onBomb(m.b, now); break;
     case 'items': syncItems(m.items); break;
@@ -485,10 +487,14 @@ function updateRemotes(dt, now) {
       if (r.speed > 0.3) r.legT += dt * (3.5 + r.speed * 2.1);
       r.model.update({ crouch: c, pitch, speed: r.speed, phase: r.legT, moveX: r.mx, moveZ: r.mz, air: r.air, time: now / 1000 + r.id });
       r.nameSprite.position.y = 2.02 - c * 0.5;
-      if (r.speed > 4.2 && !inAir && Math.abs(x - camera.position.x) + Math.abs(z - camera.position.z) < 40) {
+      const near = Math.abs(x - camera.position.x) + Math.abs(z - camera.position.z) < 40;
+      if (r.speed > 4.2 && !inAir && near) {
         r.stepT -= dt;
-        if (r.stepT <= 0) { r.stepT = 0.36; sfx.step(new THREE.Vector3(x, y, z), 1); }
+        if (r.stepT <= 0) { r.stepT = 0.36; r.foot = r.foot ? 0 : 1; sfx.step(new THREE.Vector3(x, y, z), 1, r.foot); }
       }
+      // Zıplayıp yere inen oyuncunun sesi (yönüyle birlikte duyulur)
+      if (r.falling && Math.abs(vy) < 0.4 && near && r !== specR) sfx.land(0.7, new THREE.Vector3(x, y, z));
+      if (vy < -2.5 && vy > -12) r.falling = true; else if (Math.abs(vy) < 0.4 || vy > 0) r.falling = false;
       r.hitboxes = playerHitboxes(x, y, z, c);
     } else r.hitboxes = [];
     // Ölüm animasyonu bitince duruş sabit kalır: boşuna hesaplanmaz
@@ -550,6 +556,8 @@ function onSpawn(m) {
   P.yaw = m.yaw; P.pitch = 0; P.crouch = 0; P.punchP = 0; P.punchY = 0; P.onGround = true;
   view.deathAt = 0; view.specId = 0; view.blindDur = 0; view.hurt = 0;
   selfie.on = false;
+  fight.clear(); hurtDirs.length = 0;
+  hud.deathSummary(null);
   act.kind = null;
   if (S.inv.primary) fillAmmo(S.inv.primary);
   if (S.inv.secondary) fillAmmo(S.inv.secondary);
@@ -559,7 +567,41 @@ function onSpawn(m) {
   if (m.prot) hud.note('Doğuş koruması: 2 saniye (ateş edince biter)', 2000);
 }
 
+// ---------------------------------------------------------------- Vuruş göstergeleri
+// fight: bu canda kiminle ne kadar hasar alışverişi oldu (ölünce özet olarak gösterilir)
+const fight = new Map(); // oyuncu kimliği → { give, giveN, take, takeN }
+const fightOf = (id) => { let f = fight.get(id); if (!f) { f = { give: 0, giveN: 0, take: 0, takeN: 0 }; fight.set(id, f); } return f; };
+const hurtDirs = []; // { x, z, at }: hasarın geldiği yerler (yön göstergesi için)
+const tmpP = new THREE.Vector3();
+function onHit(m) {
+  const f = fightOf(m.v);
+  f.give += m.d; f.giveN++;
+  // Sayı, vurulan oyuncunun göğüs hizasında belirir; üst üste binmesin diye biraz saçılır
+  const r = remotes.get(m.v);
+  tmpP.set(r ? r.x : m.p[0], (r ? r.y : m.p[1]) + (m.hs ? 1.75 : 1.25), r ? r.z : m.p[2]).project(camera);
+  const on = tmpP.z < 1 && Math.abs(tmpP.x) < 1 && Math.abs(tmpP.y) < 1;
+  const x = on ? (tmpP.x + 1) / 2 * window.innerWidth : window.innerWidth / 2;
+  const y = on ? (1 - tmpP.y) / 2 * window.innerHeight : window.innerHeight / 2 - 40;
+  hud.damageNumber(x + (Math.random() - 0.5) * 36, y + (Math.random() - 0.5) * 16, m.d, m.hs, !!m.k);
+}
+function updateHurtDirs(now) {
+  while (hurtDirs.length && now - hurtDirs[0].at > 1400) hurtDirs.shift();
+  if (!S.alive || !hurtDirs.length) { hud.damageDirs([]); return; }
+  const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw);
+  hud.damageDirs(hurtDirs.map((h) => {
+    const dx = h.x - P.pos.x, dz = h.z - P.pos.z;
+    return { a: Math.atan2(cy * dx - sy * dz, -sy * dx - cy * dz), o: Math.min(1, 1.6 * (1 - (now - h.at) / 1400)) };
+  }));
+}
+const STREAKS = { 2: 'ÇİFTE LEŞ', 3: 'ÜÇLÜ SERİ!', 4: 'DÖRTLÜ SERİ!', 5: 'DURDURULAMIYOR!', 6: 'ÇILGINLIK!', 7: 'EFSANE!', 10: 'TANRI GİBİ!' };
+const streakName = (n) => STREAKS[n] || (n > 10 ? `${n} LEŞLİK SERİ!` : n > 7 ? 'EFSANE!' : '');
+
 function onHurt(m) {
+  if (m.a && m.a !== S.myId) { const f = fightOf(m.a); f.take += Math.min(m.d, S.hp); f.takeN++; }
+  if (m.from && m.a !== S.myId) {
+    if (hurtDirs.length > 5) hurtDirs.shift();
+    hurtDirs.push({ x: m.from[0], z: m.from[2], at: performance.now() });
+  }
   S.hp = m.hp;
   S.armor = m.armor;
   view.hurt = Math.min(1, view.hurt + 0.25 + m.d / 100);
@@ -575,7 +617,16 @@ function onKill(m) {
   const ffa = S.mode === 'ffa';
   hud.killfeed({ k: suicide ? '' : kName, kTeam: ffa ? null : kInfo?.team, v: vInfo?.name ?? '?', vTeam: ffa ? null : vInfo?.team, w: wName, hs: m.hs, mine: m.k === S.myId || m.v === S.myId });
   if (vInfo) vInfo.alive = false;
+  // Leş serisi duyuruları
+  if (!suicide && m.k === S.myId) {
+    const name = streakName(m.s);
+    if (name) { hud.streak(name, m.e >= 3 ? `${vInfo?.name ?? '?'} adlı oyuncunun ${m.e} leşlik serisini bitirdin` : `${m.s} leş üst üste`); sfx.streak(m.s); }
+    else if (m.e >= 3) hud.streak('SERİ BİTİRİLDİ', `${vInfo?.name ?? '?'} · ${m.e} leşlik seri`);
+  } else if (!suicide && (m.s === 3 || m.s === 5 || m.s === 7 || m.s === 10)) hud.note(`${kName} ${m.s} leşlik seride!`, 3000);
+  else if (!suicide && m.e >= 5 && m.v !== S.myId) hud.note(`${kName}, ${vInfo?.name ?? '?'} adlı oyuncunun ${m.e} leşlik serisini bitirdi`, 3000);
   if (m.v === S.myId) {
+    hurtDirs.length = 0;
+    hud.deathSummary([...fight.entries()].map(([id, f]) => ({ name: S.roster.get(id)?.name ?? '?', ...f })).sort((a, b) => b.take - a.take || b.give - a.give).slice(0, 4));
     S.alive = false;
     view.deathAt = performance.now();
     view.killerId = suicide ? 0 : m.k;
@@ -1057,7 +1108,7 @@ function updateLocal(dt, now) {
   const sp2 = Math.hypot(P.vel.x, P.vel.z);
   if (P.onGround && sp2 > 4.2) {
     P.stepT -= dt;
-    if (P.stepT <= 0) { P.stepT = 0.37; sfx.step(null, 0.3); }
+    if (P.stepT <= 0) { P.stepT = 0.37; P.foot = P.foot ? 0 : 1; sfx.step(null, 0.3, P.foot); }
   } else P.stepT = Math.min(P.stepT, 0.1);
 }
 
@@ -1206,7 +1257,7 @@ function closeBuy() {
   requestLock();
 }
 function showScoreboard() {
-  hud.scoreboard(true, { roster: [...S.roster.values()], myId: S.myId, score: S.score, round: S.round, bombCarrier: S.bomb?.carrier, myTeam: S.team, mode: S.mode, phase: S.phase });
+  hud.scoreboard(true, { roster: [...S.roster.values()], myId: S.myId, score: S.score, round: S.round, bombCarrier: S.bomb?.carrier, myTeam: S.team, mode: S.mode, phase: S.phase, awards: S.awards });
 }
 
 const fmt = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -1801,6 +1852,16 @@ window.addEventListener('resize', () => {
 
 setInterval(() => send({ t: 'ping', ts: performance.now(), rtt: S.rtt }), 2000);
 
+// Duvar arkasındaki sesler boğuk duyulsun: kameradan ses kaynağına (göğüs hizası) giden hat duvara çarpıyor mu?
+sfx.setOccluder((pos) => {
+  const o = [camera.position.x, camera.position.y, camera.position.z];
+  const d = [pos.x - o[0], pos.y + 1 - o[1], pos.z - o[2]];
+  const len = Math.hypot(d[0], d[1], d[2]);
+  if (len < 2.5 || len > 80) return false;
+  d[0] /= len; d[1] /= len; d[2] /= len;
+  return raycastWorld(MAP.boxes, o, d, len - 0.6).hit;
+});
+
 // ---------------------------------------------------------------- Döngü
 const tmpF = new THREE.Vector3(), tmpUp = new THREE.Vector3();
 let last = performance.now(), lastSend = 0;
@@ -1846,6 +1907,7 @@ function frame(now) {
   sfx.setListener(camera.position, tmpF, tmpUp);
 
   updateHUD(now, dt);
+  updateHurtDirs(now);
   updateTouchUI(now);
   if (hud.buyOpen && !canBuyHere(now)) { hud.closeBuy(); if (!IS_TOUCH && !locked) setPause(true); }
 
@@ -1864,4 +1926,4 @@ connect();
 requestAnimationFrame(frame);
 
 // Hata ayıklama için konsoldan erişim
-window.__dust = { S, P, W, selfie, voice, view, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };
+window.__dust = { S, P, W, selfie, voice, view, onMessage, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };
