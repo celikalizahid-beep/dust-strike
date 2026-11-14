@@ -9,6 +9,7 @@ Kurulum yok, hesap yok — linke tıkla, adını yaz, oyna.
 
 [![Windows](https://img.shields.io/badge/Windows-EXE%20indir-2b7de9?style=flat-square&logo=windows)](https://github.com/celikalizahid-beep/dust-strike/releases/latest/download/DustStrike.exe)
 [![Android](https://img.shields.io/badge/Android-APK%20indir-3ddc84?style=flat-square&logo=android&logoColor=white)](https://github.com/celikalizahid-beep/dust-strike/releases/latest/download/DustStrike.apk)
+[![Lisans](https://img.shields.io/badge/lisans-MIT-blue?style=flat-square)](LICENSE)
 ![Node](https://img.shields.io/badge/Node.js-20%2B-5fa04e?style=flat-square&logo=nodedotjs&logoColor=white)
 ![three.js](https://img.shields.io/badge/three.js-WebGL-000000?style=flat-square&logo=threedotjs)
 
@@ -127,6 +128,10 @@ deyip bu depoyu seçmen yeterli. Ayrıntılı anlatım, admin paneli ve tüm aya
 ```bash
 npm test
 ```
+
+## Lisans
+
+[MIT](LICENSE) — kodu dilediğin gibi kullanabilir, değiştirebilir ve paylaşabilirsin.
 
 ## Katkı
 
