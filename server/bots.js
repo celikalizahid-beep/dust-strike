@@ -88,8 +88,24 @@ function turn(from, to, max) {
 }
 
 // Botun karar durumu (oyuncu nesnesindeki "ai" alanı)
-export function newBrain() {
-  return { path: null, goal: null, goalAt: 0, target: null, seenAt: 0, look: 0, nextShot: 0, burst: 0, stuck: 0, bought: -1, hold: 0, skill: 0.75 + Math.random() * 0.5 };
+// Zorluk: beceri (tepki hızı ve isabet çarpanı), isabet tavanı ve kafadan vurma olasılığı
+export const BOT_SKILLS = ['easy', 'normal', 'hard'];
+const SKILL = {
+  easy: { skill: [0.4, 0.6], maxHit: 0.3, head: 0.05 },
+  normal: { skill: [0.8, 1.2], maxHit: 0.55, head: 0.13 },
+  hard: { skill: [1.5, 2.0], maxHit: 0.82, head: 0.3 },
+};
+// Botun zorluğunu (yeniden) ayarlar
+export function setSkill(ai, level) {
+  ai.level = SKILL[level] ? level : 'normal';
+  const k = SKILL[ai.level];
+  ai.skill = k.skill[0] + Math.random() * (k.skill[1] - k.skill[0]);
+  ai.maxHit = k.maxHit;
+  ai.head = k.head;
+  return ai;
+}
+export function newBrain(level = 'normal') {
+  return setSkill({ path: null, goal: null, goalAt: 0, target: null, seenAt: 0, look: 0, nextShot: 0, burst: 0, stuck: 0, bought: -1, hold: 0 }, level);
 }
 
 function siteNode(room, nav, name) {
@@ -175,9 +191,9 @@ export function updateBot(bot, room, dt, t, api) {
         ai.burst++;
         // Otomatik silahta kısa seriler, aralarda duraklama
         ai.nextShot = t + (w.auto ? (ai.burst % 5 === 0 ? 450 + Math.random() * 400 : rate * 1.25) : rate + 250 + Math.random() * 350);
-        const chance = Math.max(0.1, Math.min(0.55, (0.62 - d / 95) * ai.skill)) * (w.scope ? 1.25 : 1);
+        const chance = Math.max(0.1, Math.min(ai.maxHit, (0.62 - d / 95) * ai.skill)) * (w.scope ? 1.25 : 1);
         const hit = melee || Math.random() < chance;
-        const zone = !melee && Math.random() < 0.13 ? 'head' : Math.random() < 0.2 ? 'legs' : 'body';
+        const zone = !melee && Math.random() < ai.head ? 'head' : Math.random() < 0.2 ? 'legs' : 'body';
         const miss = hit ? 0 : 0.5 + Math.random();
         const e = [tgt.pos[0] + (Math.random() - 0.5) * miss * 2, tgt.pos[1] + (zone === 'head' ? 1.6 : zone === 'legs' ? 0.5 : 1.15) + miss * 0.4, tgt.pos[2] + (Math.random() - 0.5) * miss * 2];
         api.handle(bot, { t: 'shot', w: bot.weapon, o: eye, e, hits: hit ? [{ id: tgt.id, z: zone }] : [] });

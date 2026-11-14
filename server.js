@@ -12,7 +12,7 @@ import { raycastWorld, stepNade, groundAt, NADE_DT, NADE_FUSE } from './public/s
 import { clientAddress, parseTrust } from './server/ip.js';
 import { AdminStore } from './server/store.js';
 import { createAdminApi, EventLog } from './server/admin.js';
-import { updateBot, newBrain, BOT_NAMES } from './server/bots.js';
+import { updateBot, newBrain, setSkill, BOT_NAMES, BOT_SKILLS } from './server/bots.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -43,6 +43,7 @@ const PLANT_TIME = 3;
 const DEFUSE_TIME = 10;
 const KIT_DEFUSE_TIME = 5;
 const WIN_ROUNDS = 10;
+const BOT_SKILL = BOT_SKILLS.includes(process.env.BOT_SKILL) ? process.env.BOT_SKILL : 'normal'; // herkese açık odalardaki bot zorluğu
 const START_MONEY = 800;
 const MAX_MONEY = 16000;
 const RESPAWN_DELAY = 2.5;
@@ -55,6 +56,21 @@ const MODES = {
   tdm: { name: 'Takımlı Ölüm Maçı', teams: true, max: 20, time: DM_TIME },
   ffa: { name: 'Herkes Tek', teams: false, max: 32, time: DM_TIME },
 };
+// Oda ayarları: özel odada kurucu değiştirebilir. Verilen değerler sınırlanır, verilmeyenler olduğu gibi kalır.
+// time: ölüm maçı süresi (sn) · limit: leş sınırı (0 = yok) · ff: dost ateşi · skill: bot zorluğu ·
+// rounds: klasikte kazanmak için gereken raund · bots: bot sayısı
+function cleanOpts(o, base) {
+  const r = { ...base };
+  if (!o || typeof o !== 'object') return r;
+  const int = (v, lo, hi, d) => (Number.isFinite(+v) && v !== null && v !== '' ? Math.max(lo, Math.min(hi, Math.round(+v))) : d);
+  if ('time' in o) r.time = int(o.time, 60, 1800, base.time);
+  if ('limit' in o) r.limit = int(o.limit, 0, 200, base.limit);
+  if ('ff' in o) r.ff = !!o.ff;
+  if ('skill' in o) r.skill = BOT_SKILLS.includes(o.skill) ? o.skill : base.skill;
+  if ('rounds' in o) r.rounds = int(o.rounds, 3, 16, base.rounds);
+  if ('bots' in o) r.bots = int(o.bots, 0, 9, base.bots);
+  return r;
+}
 const TEAM_NAME = { T: 'Teröristler', CT: 'Anti-Terör Timi' };
 
 // ---------------------------------------------------------------- HTTP
@@ -229,6 +245,10 @@ class Room {
     this.mode = mode;
     this.code = code;
     this.botCount = bots; // özel odada bot sayısı; genel odada oyuncuların tamamlanacağı sayı
+    this.opts = { time: MODES[mode].time || DM_TIME, limit: 0, ff: false, skill: BOT_SKILL, rounds: WIN_ROUNDS, bots };
+    this.hostId = 0; // özel odada ayarları değiştirebilen oyuncu (kurucu)
+    this.kicked = new Set(); // kurucunun odadan çıkardığı adresler
+    this.matchStart = 0;
     this.key = code ? `ozel:${code}` : `${mode}:${mapId}`;
     this.map = buildMap(mapId);
     this.cfg = MODES[mode];
@@ -259,6 +279,30 @@ class Room {
   system(text) { this.broadcast({ t: 'chat', system: true, text }); }
   teamOf(team) { return [...this.players.values()].filter((p) => p.team === team); }
   enemies(a, b) { return a !== b && (this.mode === 'ffa' || a.team !== b.team); }
+  // Hasar verebilir mi: düşmanlar her zaman, takım arkadaşları yalnızca dost ateşi açıksa
+  canHurt(a, b) { return a !== b && (this.enemies(a, b) || this.opts.ff); }
+  roomMsg() { return { t: 'room', mode: this.mode, map: this.map.id, code: this.code, opts: this.opts, host: this.hostId }; }
+  optsMsg() { return { t: 'roomopts', opts: this.opts, host: this.hostId }; }
+  // Kurucu ayarları değiştirir
+  setOpts(o) {
+    const before = this.opts;
+    this.opts = cleanOpts(o, before);
+    this.botCount = this.opts.bots;
+    if (this.opts.skill !== before.skill) for (const p of this.players.values()) if (p.bot) setSkill(p.ai, this.opts.skill);
+    if (this.dm && this.phase === 'live' && this.opts.time !== before.time) {
+      this.phaseEnd = Math.max(now() + 10000, this.matchStart + this.opts.time * 1000);
+      this.broadcast(this.stateMsg());
+    }
+    this.broadcast(this.optsMsg());
+    this.checkLimit();
+  }
+  // Leş sınırı: ölüm maçında sınıra ulaşan (takım ya da oyuncu) maçı bitirir
+  checkLimit() {
+    const lim = this.opts.limit;
+    if (!lim || !this.dm || this.phase !== 'live') return;
+    const top = this.mode === 'tdm' ? Math.max(this.score.T, this.score.CT) : Math.max(0, ...[...this.players.values()].map((p) => p.kills));
+    if (top >= lim) this.endDM();
+  }
   enoughPlayers() {
     return this.mode === 'ffa' ? this.players.size >= 2 : this.teamOf('T').length > 0 && this.teamOf('CT').length > 0;
   }
@@ -266,7 +310,7 @@ class Room {
   stateMsg() {
     const t = now();
     return {
-      t: 'state', mode: this.mode, map: this.map.id, phase: this.phase, round: this.round, score: this.score, msg: this.msg, win: WIN_ROUNDS,
+      t: 'state', mode: this.mode, map: this.map.id, phase: this.phase, round: this.round, score: this.score, msg: this.msg, win: this.opts.rounds, limit: this.opts.limit,
       left: this.phaseEnd ? Math.max(0, this.phaseEnd - t) : 0,
       buyLeft: this.dm || this.phase === 'warmup' ? 1e9 : Math.max(0, this.roundStart + BUY_TIME * 1000 - t),
     };
@@ -294,7 +338,7 @@ class Room {
     this.players.set(p.id, p);
     p.kills = 0; p.deaths = 0; p.streak = 0; p.bestStreak = 0; p.hsKills = 0; p.dmg = 0; p.alive = false; p.lastPrimary = null; p.team = null;
     p.money = this.dm ? MAX_MONEY : START_MONEY;
-    send(p, { t: 'room', mode: this.mode, map: this.map.id, code: this.code });
+    send(p, this.roomMsg());
     this.setTeam(p, team, true);
   }
 
@@ -309,6 +353,12 @@ class Room {
     if (p.voice) { p.voice = false; this.broadcast({ t: 'voiceleave', id: p.id }); }
     this.broadcast({ t: 'leave', id: p.id });
     this.system(`${p.name} ayrıldı`);
+    if (this.code && p.id === this.hostId) {
+      // Kurucu çıktı: kuruculuk odadaki sıradaki oyuncuya geçer
+      const next = [...this.players.values()].find((o) => !o.bot);
+      this.hostId = next ? next.id : 0;
+      if (next) { this.broadcast(this.optsMsg()); this.system(`Oda kurucusu artık ${next.name}`); }
+    }
     this.broadcast(this.rosterMsg());
     this.checkTeams();
     this.checkElimination();
@@ -501,7 +551,12 @@ class Room {
     v.deaths++;
     const ended = v.streak; // kurbanın biten leş serisi
     v.streak = 0;
-    if (k && k !== v) {
+    const teamKill = !!k && k !== v && !this.enemies(k, v); // dost ateşiyle takım arkadaşını öldürdü
+    if (teamKill) {
+      k.kills--;
+      k.streak = 0;
+      this.system(`${k.name} takım arkadaşını öldürdü`);
+    } else if (k && k !== v) {
       k.kills++;
       k.streak++;
       if (k.streak > k.bestStreak) k.bestStreak = k.streak;
@@ -521,11 +576,12 @@ class Room {
     this.dropBombIfCarrier(v);
     if (this.bomb?.planting?.id === v.id) this.bomb.planting = null;
     if (this.bomb?.defusing?.id === v.id) { this.bomb.defusing = null; this.broadcast(this.bombMsg()); }
-    this.broadcast({ t: 'kill', k: k ? k.id : 0, v: v.id, w: weapon, hs: !!hs, s: k && k !== v ? k.streak : 0, e: ended });
+    this.broadcast({ t: 'kill', k: k ? k.id : 0, v: v.id, w: weapon, hs: !!hs, s: k && k !== v ? k.streak : 0, e: teamKill ? 0 : ended });
     if (this.dm || this.phase === 'warmup') v.respawnAt = now() + RESPAWN_DELAY * 1000;
     sendYou(v);
     this.broadcast(this.rosterMsg());
     if (this.mode === 'tdm') this.broadcast(this.stateMsg());
+    this.checkLimit();
     this.checkElimination();
   }
 
@@ -577,20 +633,21 @@ class Room {
     }
     if (this.dm) {
       this.phase = 'live';
-      this.phaseEnd = now() + this.cfg.time * 1000;
+      this.matchStart = now();
+      this.phaseEnd = now() + this.opts.time * 1000;
       this.bomb = null;
       this.items = [];
       this.nades = [];
       this.msg = this.mode === 'ffa' ? 'Maç başladı! En çok leşi alan oyuncu kazanır' : 'Maç başladı! En çok leşi alan takım kazanır';
       for (const p of this.players.values()) this.spawnPlayer(p);
-      this.system(`Maç başladı! Süre: ${this.cfg.time / 60} dakika.`);
+      this.system(`Maç başladı! Süre: ${Math.round(this.opts.time / 6) / 10} dakika${this.opts.limit ? ` · leş sınırı: ${this.opts.limit}` : ''}.`);
       this.broadcast(this.stateMsg());
       this.broadcast(this.bombMsg());
       this.broadcast(this.itemsMsg());
       this.broadcast(this.rosterMsg());
       return;
     }
-    this.system('Maç başladı! İlk ' + WIN_ROUNDS + ' raundu alan kazanır.');
+    this.system('Maç başladı! İlk ' + this.opts.rounds + ' raundu alan kazanır.');
     this.startRound();
   }
 
@@ -857,7 +914,7 @@ class Room {
         if (Array.isArray(m.hits)) {
           for (const h of m.hits.slice(0, 1)) {
             const v = this.players.get(h && h.id);
-            if (!v || !v.alive || !this.enemies(p, v)) continue;
+            if (!v || !v.alive || !this.canHurt(p, v)) continue;
             const d = dist(v.pos, p.pos);
             if ((w.melee && d > 3.5) || d > 200) continue;
             const zone = ['head', 'body', 'legs'].includes(h.z) ? h.z : 'body';
@@ -951,7 +1008,7 @@ class Room {
     if (n.type === 'he') {
       for (const v of this.players.values()) {
         if (!v.alive) continue;
-        if (owner && v !== owner && !this.enemies(owner, v)) continue; // dost ateşi kapalı
+        if (owner && v !== owner && !this.canHurt(owner, v)) continue; // dost ateşi kapalı
         const chest = [v.pos[0], v.pos[1] + 1.0, v.pos[2]];
         const d = dist(n.p, chest);
         if (d > HE_RADIUS) continue;
@@ -1005,7 +1062,7 @@ class Room {
       }
       case 'over':
         if (t >= this.phaseEnd) {
-          const w = this.score.T >= WIN_ROUNDS ? 'T' : this.score.CT >= WIN_ROUNDS ? 'CT' : null;
+          const w = this.score.T >= this.opts.rounds ? 'T' : this.score.CT >= this.opts.rounds ? 'CT' : null;
           if (w) {
             this.phase = 'gameover';
             this.phaseEnd = t + GAMEOVER_TIME * 1000;
@@ -1095,7 +1152,7 @@ class Room {
       const name = 'Bot ' + (BOT_NAMES.find((n) => !used.has('Bot ' + n)) || nextPlayerId);
       const bot = makePlayer({ readyState: 3, send() {} }, null, name);
       bot.bot = true;
-      bot.ai = newBrain();
+      bot.ai = newBrain(this.opts.skill);
       this.add(bot, 'auto');
     }
   }
@@ -1169,6 +1226,7 @@ function handle(p, m) {
         // Özel odaya kodla giriş
         room = rooms[`ozel:${String(m.code).trim().toUpperCase().slice(0, 6)}`];
         if (!room) { send(p, { t: 'joinfail', text: 'Bu kodla bir oda bulunamadı. Kodu kontrol et; oda boşaldıysa kapanmış olabilir.' }); break; }
+        if (room.kicked.has(p.addr.key)) { send(p, { t: 'joinfail', text: 'Oda kurucusu seni bu odadan çıkardı.' }); break; }
       } else room = rooms[`${mode}:${m.map}`] || rooms[`${mode}:kum`];
       if (p.room === room) { if (room.cfg.teams) room.setTeam(p, m.team); break; }
       if (!p.room && !ipGate(p)) break; // oyuna ilk giriş: aynı IP kuralı
@@ -1188,6 +1246,9 @@ function handle(p, m) {
       if (!p.room && !ipGate(p)) break;
       if (Object.values(rooms).filter((r) => r.code).length >= MAX_PRIVATE_ROOMS) { send(p, { t: 'joinfail', text: 'Şu an çok fazla özel oda açık. Biraz sonra tekrar dene.' }); break; }
       const room = new Room(mode, mapId, newRoomCode(), Math.max(0, Math.min(9, m.bots | 0)));
+      room.opts = cleanOpts(m.opts, room.opts);
+      room.botCount = room.opts.bots;
+      room.hostId = p.id;
       rooms[room.key] = room;
       leaveRoom(p);
       room.add(p, m.team);
@@ -1197,6 +1258,21 @@ function handle(p, m) {
     case 'team':
       if (p.room) p.room.setTeam(p, m.team);
       break;
+    // Oda ayarları ve oyuncu çıkarma: yalnızca özel odanın kurucusu yapabilir
+    case 'roomset':
+      if (p.room && p.room.code && p.room.hostId === p.id) p.room.setOpts(m.opts);
+      break;
+    case 'roomkick': {
+      const room = p.room;
+      if (!room || !room.code || room.hostId !== p.id) break;
+      const o = room.players.get(m.id);
+      if (!o || o === p || o.bot) break;
+      room.kicked.add(o.addr.key);
+      room.system(`${o.name} odadan çıkarıldı`);
+      leaveRoom(o);
+      send(o, { t: 'joinfail', text: 'Oda kurucusu seni bu odadan çıkardı.' });
+      break;
+    }
     // Sesli sohbet (yalnızca özel odada): ses tarayıcılar arasında doğrudan akar (WebRTC), sunucu yalnızca
     // kimlerin açık olduğunu ve bağlantı kurma sinyallerini iletir.
     case 'voice': {

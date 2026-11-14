@@ -201,6 +201,7 @@ let touch = null;
 
 function setPause(v) {
   pauseOpen = v;
+  if (v && S.roomCode) refreshRoomUi();
   hud.showPause(v);
   if (v && touch) touch.releaseAll();
   if (v && typeof gyro !== 'undefined' && gyro.enabled) document.getElementById('gyroNote').textContent = `Açık · algılanan tutuş: ${gyro.orientation}`;
@@ -292,6 +293,7 @@ function onMessage(m) {
       hud.menuNotice('');
       S.mode = m.mode;
       S.roomCode = m.code || '';
+      S.roomOpts = m.opts || null; S.roomHost = m.host || 0;
       voice.stop(false);
       refreshRoomUi();
       loadMap(m.map || 'kum');
@@ -359,6 +361,7 @@ function onMessage(m) {
       break;
     }
     case 'leave': removeRemote(m.id); break;
+    case 'roomopts': S.roomOpts = m.opts; S.roomHost = m.host; refreshRoomUi(); break;
     case 'voicepeers': voice.onPeers(m.ids); break;
     case 'rtc': voice.onSignal(m.from, m.d); break;
     case 'voiceleave': voice.drop(m.id); break;
@@ -415,6 +418,7 @@ function applyRoster(ps) {
   }
   for (const id of [...S.roster.keys()]) if (!seen.has(id)) { S.roster.delete(id); removeRemote(id); }
   if (input.keys.Tab || scoreShown || S.phase === 'gameover') showScoreboard();
+  if (S.roomCode && pauseOpen) refreshRoomUi();
 }
 
 function applySnap(ps, now) {
@@ -1500,10 +1504,49 @@ function refreshRoomUi() {
   document.getElementById('menu').classList.toggle('inroom', !!code && S.joined);
   for (const el of document.querySelectorAll('.roomCode')) el.textContent = code;
   document.getElementById('pauseRoom').classList.toggle('hidden', !code);
-  for (const b of document.querySelectorAll('#voiceModes button')) b.classList.toggle('sel', b.dataset.voice === voice.mode);
+  for (const el of document.querySelectorAll('#roomOpts [data-opt]')) {
+  el.addEventListener('change', () => {
+    const k = el.dataset.opt;
+    send({ t: 'roomset', opts: { [k]: el.type === 'checkbox' ? el.checked : k === 'skill' ? el.value : +el.value } });
+    el.blur();
+  });
+}
+for (const b of document.querySelectorAll('#voiceModes button')) b.classList.toggle('sel', b.dataset.voice === voice.mode);
   const n = voice.connected;
   document.getElementById('voiceNote').textContent = voice.error || (voice.mode === 'off' ? 'Kapalı: kimseyi duymazsın, kimse seni duymaz.'
     : `${voice.mode === 'ptt' ? 'Konuşmak için K tuşunu basılı tut' : 'Mikrofonun açık'} · bağlı kişi: ${n}`);
+  // Oda ayarları: kurucu değiştirir, diğerleri yalnızca görür
+  const o = S.roomOpts, host = !!code && S.roomHost === S.myId;
+  const box = document.getElementById('roomOpts');
+  box.classList.toggle('hidden', !o);
+  if (o) {
+    for (const el of box.querySelectorAll('[data-opt]')) {
+      if (el.type === 'checkbox') el.checked = !!o[el.dataset.opt];
+      else if (document.activeElement !== el) el.value = String(o[el.dataset.opt]);
+      el.disabled = !host;
+    }
+    for (const el of box.querySelectorAll('.dmOnly')) el.classList.toggle('hidden', S.mode === 'classic');
+    for (const el of box.querySelectorAll('.classicOnly')) el.classList.toggle('hidden', S.mode !== 'classic');
+    for (const el of box.querySelectorAll('.teamOnly')) el.classList.toggle('hidden', S.mode === 'ffa');
+  }
+  document.getElementById('roomOptNote').textContent = host ? '(kurucu sensin)' : `(yalnızca kurucu değiştirir: ${S.roster.get(S.roomHost)?.name ?? '?'})`;
+  // Kurucu, odadaki oyuncuları çıkarabilir
+  const others = host ? [...S.roster.values()].filter((p) => !p.bot && p.id !== S.myId) : [];
+  const sig = others.map((p) => `${p.id}:${p.name}`).join('|');
+  const list = document.getElementById('roomPlayers');
+  if (list.dataset.sig !== sig) {
+    list.dataset.sig = sig;
+    list.textContent = '';
+    for (const p of others) {
+      const row = document.createElement('span');
+      row.textContent = p.name;
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = 'At';
+      b.addEventListener('click', () => send({ t: 'roomkick', id: p.id }));
+      row.appendChild(b);
+      list.appendChild(row);
+    }
+  }
   const mic = document.getElementById('micHud');
   mic.classList.toggle('hidden', !code || voice.mode === 'off');
   const live = voice.mode === 'open' || (voice.mode === 'ptt' && !!input.keys.KeyK);
@@ -1520,7 +1563,7 @@ function startRoom(msg) {
   enterGame();
 }
 document.getElementById('roomCreate').addEventListener('click', () => {
-  startRoom({ t: 'create', mode: view.settings.mode, map: view.settings.map, bots: +document.getElementById('roomBots').value });
+  startRoom({ t: 'create', mode: view.settings.mode, map: view.settings.map, bots: +document.getElementById('roomBots').value, opts: { skill: document.getElementById('roomSkill').value } });
 });
 document.getElementById('roomJoinForm').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -1926,4 +1969,4 @@ connect();
 requestAnimationFrame(frame);
 
 // Hata ayıklama için konsoldan erişim
-window.__dust = { S, P, W, selfie, voice, view, onMessage, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };
+window.__dust = { S, P, W, selfie, voice, view, onMessage, setPause, remotes, send, switchWeapon, fireGun, trace, hud, fx, camera, scene, vm, vmScene, renderer, gyro, perf, loadMap, post, get world() { return world; } };
