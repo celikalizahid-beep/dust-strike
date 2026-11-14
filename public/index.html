@@ -179,6 +179,16 @@
   #voiceModes { display: flex; gap: 6px; margin-top: 6px; }
   #voiceModes button { flex: 1; padding: 9px 4px; background: rgba(0,0,0,.4); color: #ddd; border: 1px solid var(--hud-dim); cursor: pointer; }
   #voiceModes button.sel { background: rgba(255,178,40,.3); color: var(--hud); border-color: var(--hud); font-weight: 700; }
+  #roomOpts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-top: 6px; }
+  #roomOpts label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #ccc; margin: 0; }
+  #roomOpts label.chk { flex-direction: row; align-items: center; gap: 6px; font-size: 14px; }
+  #roomOpts select { padding: 6px; background: rgba(0,0,0,.45); color: #fff; border: 1px solid var(--hud-dim); border-radius: 3px; font: inherit; font-size: 14px; }
+  #roomOpts select:disabled, #roomOpts input:disabled { opacity: .55; }
+  #roomOptNote { opacity: .7; margin-left: 6px; }
+  #roomPlayers { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  #roomPlayers span { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 9px; background: rgba(0,0,0,.4); border: 1px solid var(--hud-dim); border-radius: 12px; font-size: 13px; }
+  #roomPlayers button { padding: 2px 8px; background: rgba(200,40,20,.3); color: #ffd0c8; border: 1px solid rgba(255,106,90,.6); border-radius: 10px; cursor: pointer; font-size: 12px; }
+  #pause .panel { max-height: 92vh; overflow-y: auto; }
   #voiceNote { display: block; margin-top: 6px; opacity: .75; min-height: 1.2em; }
   #micHud { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); z-index: 6; padding: 3px 10px; font-size: 12px; color: #bbb; background: rgba(0,0,0,.4); border-radius: 10px; pointer-events: none; }
   #micHud.live { color: #7dff8a; background: rgba(0,60,10,.55); }
@@ -446,13 +456,16 @@
         <select id="roomBots" title="Odadaki bot sayısı">
           <option value="0">Botsuz</option><option value="1">1 bot</option><option value="3" selected>3 bot</option><option value="5">5 bot</option><option value="7">7 bot</option><option value="9">9 bot</option>
         </select>
+        <select id="roomSkill" title="Bot zorluğu">
+          <option value="easy">Kolay botlar</option><option value="normal" selected>Orta botlar</option><option value="hard">Zor botlar</option>
+        </select>
         <button id="roomCreate" type="button">ODA KUR</button>
       </div>
       <form id="roomJoinForm" class="roomrow">
         <input id="roomCodeInput" maxlength="6" placeholder="Oda kodu" autocomplete="off" autocapitalize="characters">
         <button type="submit">KODLA GİR</button>
       </form>
-      <small class="roomhint">Oda, yukarıda seçtiğin mod ve haritayla kurulur.</small>
+      <small class="roomhint">Oda, yukarıda seçtiğin mod ve haritayla kurulur. Süre, leş sınırı, dost ateşi gibi ayarları oyunda Esc menüsünden değiştirirsin.</small>
     </div>
     <div id="roomIn">
       Özel odadasın · kod: <b class="roomCode"></b>
@@ -501,6 +514,16 @@
         <button type="button" data-voice="open">Açık mikrofon</button>
       </div>
       <small id="voiceNote"></small>
+      <div class="roomline">Oda ayarları <small id="roomOptNote"></small></div>
+      <div id="roomOpts">
+        <label class="dmOnly">Süre<select data-opt="time"><option value="180">3 dk</option><option value="300">5 dk</option><option value="600">10 dk</option><option value="900">15 dk</option><option value="1200">20 dk</option></select></label>
+        <label class="dmOnly">Leş sınırı<select data-opt="limit"><option value="0">Yok</option><option value="10">10</option><option value="20">20</option><option value="30">30</option><option value="50">50</option><option value="100">100</option></select></label>
+        <label class="classicOnly">Kazanma raundu<select data-opt="rounds"><option value="5">5</option><option value="8">8</option><option value="10">10</option><option value="13">13</option><option value="16">16</option></select></label>
+        <label>Bot sayısı<select data-opt="bots"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select></label>
+        <label>Bot zorluğu<select data-opt="skill"><option value="easy">Kolay</option><option value="normal">Orta</option><option value="hard">Zor</option></select></label>
+        <label class="teamOnly chk"><input type="checkbox" data-opt="ff"> Dost ateşi</label>
+      </div>
+      <div id="roomPlayers"></div>
     </div>
     <div class="controls desktop-only">
       <b>Tab</b><span>Skor tablosu</span>

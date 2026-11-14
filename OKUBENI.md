@@ -116,6 +116,20 @@ IP sayılıp banlanmasını önlemek için).
 - **Öldüren kamerası:** Ölünce, kısa düşüşün ardından kamera seni öldüren oyuncunun omzunun arkasına geçer
   (yaklaşık 3 saniye ya da yeniden doğana kadar).
 
+## Oda ayarları ve bot zorluğu
+
+- **Bot zorluğu:** Kolay / Orta / Zor. Zor botlar daha çabuk tepki verir, daha isabetlidir ve daha sık kafadan vurur.
+  Özel odada kurarken ya da sonradan seçilir. Herkese açık odalarda `BOT_SKILL` ortam değişkeniyle ayarlanır
+  (`easy`, `normal`, `hard`; varsayılan `normal`).
+- **Oda ayarları (yalnızca özel odada, Esc menüsünde):** Odayı kuran kişi değiştirir, diğerleri yalnızca görür.
+  - Süre (ölüm maçları): 3–20 dakika. Maç sürerken değişirse hemen uygulanır.
+  - Leş sınırı (ölüm maçları): sınıra ulaşan oyuncu ya da takım maçı kazanır.
+  - Kazanma raundu (klasik): kaç raundu alan kazanır.
+  - Bot sayısı ve bot zorluğu.
+  - Dost ateşi: açıkken takım arkadaşları birbirine hasar verir; takım arkadaşını öldüren bir leş kaybeder.
+- **Oyuncu çıkarma:** Kurucu, Esc menüsündeki listeden bir oyuncuyu **At** ile odadan çıkarır; çıkarılan o odaya
+  kodla geri giremez. Kurucu odadan ayrılırsa kuruculuk sıradaki oyuncuya geçer.
+
 ## Vuruş göstergeleri, seriler, maç sonu
 
 - **Hasar sayıları:** Birini vurunca verdiğin hasar vurduğun yerde belirir (kafadan vuruş kırmızı, öldüren vuruş sarı).
