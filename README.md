@@ -114,6 +114,7 @@ deyip bu depoyu seçmen yeterli. Ayrıntılı anlatım, admin paneli ve tüm aya
 | `ADMIN_PASSWORD` | Admin paneli şifresi | ilk açılışta üretilir |
 | `BOTS` | Herkese açık odalar kaç kişiye tamamlansın (`0` kapatır) | `4` |
 | `BOT_SKILL` | Herkese açık odalardaki bot zorluğu (`easy` / `normal` / `hard`) | `normal` |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Admin panelindeki banlar ve ayarlar sunucu yeniden başlasa da kalsın (ücretsiz Upstash) | — |
 
 </details>
 

@@ -69,6 +69,11 @@ Aynı internet bağlantısından ikinci bir kişi oyuna girmeye çalışınca ne
 | **Sadece engelle** | İkinci kişi giremez; içerideki oynamaya devam eder, kimse banlanmaz. |
 | **Kapalı** | Aynı IP'den istenen kadar kişi girebilir. |
 
+> **Okullar ve FATİH ağı:** Bir okuldaki bütün öğrenciler dışarıdan tek IP ile görünür. Kural "Engelle ve IP'yi banla"
+> iken iki öğrenci girince okulun tamamı banlanır. Okuldan oynanacaksa kuralı **Kapalı** yap ya da okulun IP'sini
+> **Kaldır + izin ver** ile izinli listeye al. (Oyun, cihazda MEB sertifikası olup olmadığını göremez: tarayıcılar
+> sitelere bu bilgiyi vermez. O yüzden okul ağı kendiliğinden tanınamaz.)
+
 Bilmen gerekenler:
 - Aynı evdeki, okuldaki ya da internet kafedeki herkes dışarıdan **tek bir IP** ile görünür; bazı mobil operatörler
   de birçok kişiye aynı IP'yi verir. Yani bu kural açıkken aynı evden iki kişi aynı anda oynayamaz. Böyle biri
@@ -81,8 +86,25 @@ Bilmen gerekenler:
 ### Kalıcı ayarlar (Render ücretsiz plan için önemli)
 
 Banlar ve panel ayarları `data/admin.json` dosyasına yazılır. Kendi bilgisayarında bu kalıcıdır. **Render'ın ücretsiz
-planında disk kalıcı değildir:** sunucu uyuyup uyandığında ya da yeniden kurulduğunda panelden eklenen banlar ve
-ayarlar sıfırlanır. Kalıcı olmasını istediklerini Render → **Environment** bölümüne yaz:
+planında disk kalıcı değildir:** sunucu uyuyup uyandığında ya da yeniden kurulduğunda panelden yapılan değişiklikler
+(banlar, **Kaldır + izin ver**, aynı IP kuralı) sıfırlanır.
+
+**Çözüm: ücretsiz Upstash veritabanı bağla (önerilen).** Bağlanınca panelde ne yaparsan sunucu yeniden başlasa da kalır.
+
+1. https://upstash.com adresinde ücretsiz hesap aç (GitHub ya da Google ile girilebilir).
+2. **Create Database** → tür olarak **Redis** → bir ad ver (ör. `duststrike`) → bölge olarak **Frankfurt
+   (eu-central-1)** seç → ücretsiz planı (**Free**) seçip oluştur.
+3. Veritabanının sayfasında **REST API** bölümünü bul. Orada iki değer var: `UPSTASH_REDIS_REST_URL` ve
+   `UPSTASH_REDIS_REST_TOKEN`. İkisini de kopyala.
+4. Render panelinde oyun servisini aç → **Environment** → **Add Environment Variable** ile ikisini aynı adlarla ekle →
+   **Save Changes**. Render sunucuyu yeniden başlatır.
+5. Admin panelini aç: "Buradaki değişiklikler kalıcı depoda saklanıyor" yazısını görürsen tamamdır. Bağlanamazsa
+   panelin üstünde nedeniyle birlikte uyarı çıkar.
+
+Token, veritabanının şifresi gibidir: kimseyle paylaşma, GitHub'a yazma; yalnızca Render'ın Environment bölümüne gir.
+Upstash'ın ücretsiz planı bu oyun için fazlasıyla yeter (yalnızca açılışta ve paneldeki her değişiklikte birer istek gider).
+
+**Upstash'sız yol:** Kalıcı olmasını istediklerini Render → **Environment** bölümüne elle yaz:
 
 | Değişken | Anlamı |
 | --- | --- |
@@ -90,6 +112,7 @@ ayarlar sıfırlanır. Kalıcı olmasını istediklerini Render → **Environmen
 | `IP_RULE` | Aynı IP kuralının başlangıç değeri: `ban`, `block` (sadece engelle) ya da `off` |
 | `BANNED_IPS` | Kalıcı yasaklı IP'ler, virgülle ayrılmış (ör. `85.105.12.34, 78.180.1.2`). Panelden kaldırılamaz. |
 | `ALLOWED_IPS` | Aynı IP kuralından muaf IP'ler, virgülle ayrılmış |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Kalıcı depo (yukarıya bak) |
 | `DATA_DIR` | Veri klasörü (varsayılan `data/`). Kalıcı diski olan bir sunucuda o diskin yolunu ver. |
 | `TRUST_PROXY` | Gerçek IP'nin nasıl bulunacağı (aşağıya bak) |
 

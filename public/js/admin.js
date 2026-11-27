@@ -256,7 +256,9 @@
     const warnings = [...s.warnings];
     if (s.passwordSource === 'file' && s.server.render) warnings.push('Admin şifresi sunucu her yeniden başladığında değişiyor. Render → Environment bölümüne ADMIN_PASSWORD ekle.');
     $('warnings').replaceChildren(...warnings.map((w) => h('div', { class: 'warnbox', text: w })));
-    $('renderNote').classList.toggle('hidden', !s.server.render);
+    // Render'ın ücretsiz planında disk kalıcı değil: uzak depo bağlı değilse nasıl kalıcı yapılacağı anlatılır
+    $('renderNote').classList.toggle('hidden', !s.server.render || s.storage !== 'file');
+    $('storageOk').classList.toggle('hidden', s.storage !== 'remote');
     renderPlayers(s);
     renderRule(s);
     renderBans(s);

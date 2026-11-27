@@ -184,7 +184,8 @@
       <input type="text" id="banReason" class="grow2" placeholder="Sebep (isteğe bağlı)" maxlength="200" autocomplete="off">
       <button type="submit" class="danger">IP'yi banla</button>
     </form>
-    <p class="note hidden" id="renderNote">Render'ın ücretsiz planında disk kalıcı değildir: sunucu uyuyup uyandığında buradan eklenen banlar ve ayarlar sıfırlanır. Kalıcı olması için Render → Environment bölümünde BANNED_IPS, ALLOWED_IPS ve IP_RULE değişkenlerini kullan (OKUBENI.md).</p>
+    <p class="note hidden" id="renderNote">Render'ın ücretsiz planında disk kalıcı değildir: sunucu uyuyup uyandığında buradan yapılan değişiklikler (banlar, izinli IP'ler, kural) sıfırlanır. Kalıcı olması için ücretsiz bir Upstash veritabanı bağla: Render → Environment bölümüne UPSTASH_REDIS_REST_URL ve UPSTASH_REDIS_REST_TOKEN ekle (adımlar OKUBENI.md içinde).</p>
+    <p class="note hidden" id="storageOk">Buradaki değişiklikler kalıcı depoda (Upstash) saklanıyor: sunucu yeniden başlasa da kalır.</p>
   </section>
 
   <section class="box">
