@@ -28,6 +28,7 @@ const HEARTBEAT_MS = Number(process.env.HEARTBEAT_MS) || 15000; // yanıt vermey
 const BOT_FILL = Math.max(0, Math.min(10, process.env.BOTS === undefined ? 4 : Number(process.env.BOTS) || 0));
 const MAX_PRIVATE_ROOMS = 30;
 const store = new AdminStore({ dir: DATA_DIR, env: process.env });
+await store.init(); // uzak depo (Upstash) ayarlıysa banlar ve ayarlar oradan gelir
 const events = new EventLog();
 const CLOSE = { KICKED: 4001, REPLACED: 4002, BANNED: 4003 }; // WebSocket kapanış kodları
 
@@ -232,7 +233,8 @@ const game = {
     const out = [];
     const unsure = [...clients.values()].filter((p) => !p.addr.reliable).length;
     if (unsure) out.push(`${unsure} bağlantının IP adresi güvenilir biçimde belirlenemiyor; bu bağlantılara aynı IP kuralı ve ban uygulanmıyor. Sunucu bir vekilin (proxy) arkasındaysa TRUST_PROXY ortam değişkenini ayarla (OKUBENI.md).`);
-    if (!store.persistent) out.push('Ban listesi ve ayarlar diske yazılamıyor: sunucu kapanınca kaybolur. DATA_DIR klasörünü kontrol et.');
+    if (store.storage === 'remote-error') out.push(`Kalıcı depoya (Upstash) ulaşılamıyor: ${store.storageError}. Panelde yapılanlar sunucu kapanınca kaybolabilir. UPSTASH_REDIS_REST_URL ve UPSTASH_REDIS_REST_TOKEN değerlerini kontrol et.`);
+    else if (!store.persistent) out.push('Ban listesi ve ayarlar diske yazılamıyor: sunucu kapanınca kaybolur. DATA_DIR klasörünü kontrol et.');
     return out;
   },
 };
@@ -1387,5 +1389,6 @@ httpServer.listen(PORT, '0.0.0.0', () => {
     ? '  Şifre:                     ADMIN_PASSWORD ortam değişkenindeki değer'
     : `  Şifre:                     ${store.password}   (değiştirmek için ADMIN_PASSWORD ortam değişkenini ayarla)`);
   console.log(`  Aynı IP kuralı:            ${{ ban: 'ikinci oyuncuyu engelle ve IP\'yi banla', block: 'ikinci oyuncuyu engelle', off: 'kapalı' }[store.ipRule]}`);
+  console.log(`  Banlar ve ayarlar:         ${{ remote: 'Upstash (kalıcı)', 'remote-error': `Upstash'a ulaşılamıyor (${store.storageError})`, file: 'disk' }[store.storage]}`);
   console.log('\n  Kapatmak için bu pencerede Ctrl+C\n');
 });

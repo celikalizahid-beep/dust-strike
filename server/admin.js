@@ -102,6 +102,7 @@ export function createAdminApi({ store, events, game, addressOf }) {
       server: game.serverInfo(),
       settings: { ipRule: store.ipRule },
       persistent: store.persistent,
+      storage: store.storage,
       passwordSource: store.passwordSource,
       players: game.players(),
       lobby: game.lobbyCount(),
